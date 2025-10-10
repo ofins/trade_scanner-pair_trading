@@ -1,3 +1,9 @@
 {
-  "cSpell.words": ["cointegrated", "lookback", "pvalue", "stationarity"]
+  "cSpell.words": [
+    "Backtest",
+    "cointegrated",
+    "lookback",
+    "pvalue",
+    "stationarity"
+  ]
 }

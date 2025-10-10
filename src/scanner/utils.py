@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from io import StringIO
+import os
 import numpy as np
 import pandas as pd
 import requests
@@ -258,7 +259,7 @@ class PairScannerUtils:
             return result[1]  # Return p-value
         except:
             return 1.0  # Return high p-value if test fails
-
+    
 
 if __name__ == "__main__":
     tickers = PairScannerUtils.find_all_sp500_tickers()

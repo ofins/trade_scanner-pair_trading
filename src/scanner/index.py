@@ -3,8 +3,12 @@ import pandas as pd
 import yfinance as yf
 import json
 import os
+import sys
 from statsmodels.tsa.stattools import coint, adfuller
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from common.utils import CommonUtils
 from utils import PairScannerUtils
 
 class PairsScanner: 
@@ -138,7 +142,8 @@ class PairsScanner:
         
     def main(self):
         sectors = self.fetch_stocks_by_sector()
-        self.run_scanner(sectors)
+        results = self.run_scanner(sectors)
+        CommonUtils.save_to_xlsx(results, filename="pairs_trading_results", base_folder="__reports__")
         
             
 if __name__ == "__main__":
