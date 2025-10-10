@@ -1,4 +1,4 @@
-from ast import List
+from datetime import datetime, timedelta
 from io import StringIO
 import numpy as np
 import pandas as pd
@@ -61,9 +61,53 @@ class PairScannerUtils:
         print(f"\n🏁 Found {len(large_cap_tickers)} tickers with market cap > ${min_market_cap/1e9:.1f}B")
         return large_cap_tickers
 
+    @staticmethod
+    def fetch_price_data(tickers: list[str], lookback_days: int = 252, interval: str = "1d") -> pd.DataFrame:
+        """ Fetch historical price data for given tickers """
+        if not tickers:
+            return pd.DataFrame()
+        
+        print(f"  Fetching data for {len(tickers)} tickers...")
+        data_dict = {}
+        failed_tickers = []
+        successful_tickers = []
+
+
+        # Download all tickers at once.
+
+        end_date = datetime(2025, 10, 10)
+        start_date = end_date - timedelta(days=int(lookback_days * 2))
+
+        try:
+            tickers_str = ' '.join(tickers)
+            print(f"Downloading from {start_date.date()} to {end_date.date()}")
+            all_data = yf.download(
+                tickers_str,
+                start=start_date,
+                end=end_date,
+                progress=False,
+                group_by='ticker',
+                threads=True,
+                repair=True
+            )
+
+            # Check if data was downloaded
+            print(f"Downloaded data shape: {all_data.shape if not all_data.empty else 'EMPTY'}")
+            if not all_data.empty:
+                print(f"Columns: {all_data.columns.tolist()[:5] if len(all_data.columns) > 0 else 'None'}")
+
+            for ticker in tickers:
+                try:
+                    if not all_data.empty:
+                        pass
+                except Exception as e:
+                    print(f"Error fetching data for {ticker}: {e}")
+
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+
 
     """ Formulas relevant to pairs trading """
-
 
     @staticmethod
     def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float) -> dict:
@@ -176,6 +220,7 @@ class PairScannerUtils:
             return result[1]  # Return p-value
         except:
             return 1.0  # Return high p-value if test fails
+
 
 if __name__ == "__main__":
     tickers = PairScannerUtils.find_all_sp500_tickers()

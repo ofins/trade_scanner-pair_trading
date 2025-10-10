@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import json
+import os
 from statsmodels.tsa.stattools import coint, adfuller
 
 from utils import PairScannerUtils
@@ -10,13 +12,18 @@ class PairsScanner:
         self.min_correlation = min_correlation
         self.zscore_window = zscore_window
         self.zscore_entry_threshold = zscore_entry_threshold
-        self.find_all_large_cap_tickers()
 
     def find_all_large_cap_tickers(self):
         # Fetch all tickers from yfinance library that have marketcap > $10B, not ETFs, and large-cap only.
         all_tickers = PairScannerUtils.find_all_sp500_tickers()
         large_cap_tickers = PairScannerUtils.filter_large_cap_tickers(all_tickers)
         return large_cap_tickers
+    
+    def fetch_stocks_by_sector(self) -> dict[str, list[str]]:
+        json_path = os.path.join(os.path.dirname(__file__), "../constants/stock_by_sectors.json")
+        with open(json_path, 'r') as f:
+            data = json.load(f)
+            print(data)
     
 
     def find_cointegrated_pairs(self, data: pd.DataFrame, sector_name: str) -> list[dict]:
@@ -112,11 +119,17 @@ class PairsScanner:
             except Exception as e:
                 continue
         
-    
+    def run_scanner(self, sectors: dict[str, list[str]]):
+        # fetch stocks by sector
+        # find integrated pairs in each sector
+
+        for sector, tickers in sectors.items():
+            print(f"Scanning sector: {sector} with {len(tickers)} tickers")
+
+            data = PairScannerUtils.fetch_price_data(tickers)
+        
             
 if __name__ == "__main__":
     scanner = PairsScanner()
-    large_cap_tickers = scanner.find_all_large_cap_tickers()
-    print(f"Found {len(large_cap_tickers)} large-cap tickers.")
-    print(large_cap_tickers)
+    scanner.fetch_stocks_by_sector()
     
