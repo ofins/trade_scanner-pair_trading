@@ -12,18 +12,13 @@ class PairsScanner:
         self.min_correlation = min_correlation
         self.zscore_window = zscore_window
         self.zscore_entry_threshold = zscore_entry_threshold
-
-    def find_all_large_cap_tickers(self):
-        # Fetch all tickers from yfinance library that have marketcap > $10B, not ETFs, and large-cap only.
-        all_tickers = PairScannerUtils.find_all_sp500_tickers()
-        large_cap_tickers = PairScannerUtils.filter_large_cap_tickers(all_tickers)
-        return large_cap_tickers
     
     def fetch_stocks_by_sector(self) -> dict[str, list[str]]:
         json_path = os.path.join(os.path.dirname(__file__), "../constants/stock_by_sectors.json")
         with open(json_path, 'r') as f:
             data = json.load(f)
-            print(data)
+            print(f"Loaded sectors: {list(data.keys())} with counts: {[len(v) for v in data.values()]}")
+            return data
     
 
     def find_cointegrated_pairs(self, data: pd.DataFrame, sector_name: str) -> list[dict]:
@@ -86,10 +81,11 @@ class PairsScanner:
                         best_score = score2
                         direction = 2
 
-                    spread_stats = PairScannerUtils.calculate_spread_stats(pair_data[stock_x], pair_data[stock_y], zscore_window=self.zscore_window)
 
+                    spread_stats = PairScannerUtils.calculate_spread_stats(pair_data[stock_x], pair_data[stock_y], zscore_window=self.zscore_window, zscore_entry_threshold=self.zscore_entry_threshold)
                     spread = pair_data[stock_y] - spread_stats['hedge_ratio'] * pair_data[stock_x]
                     spread_adf_pvalue = PairScannerUtils.test_stationarity(spread)
+
 
                     result = {
                             'Sector': sector_name,
@@ -115,21 +111,37 @@ class PairsScanner:
                             'Reversion_Rate': spread_stats['reversion_rate']
                         }
                     
-                results.append(result)
+                    results.append(result)
             except Exception as e:
                 continue
+        print(f"  Tested {tested} pairs, found {len(results)} cointegrated pairs in sector {sector_name}.")
+        return results
         
     def run_scanner(self, sectors: dict[str, list[str]]):
-        # fetch stocks by sector
-        # find integrated pairs in each sector
+        all_results = []
 
         for sector, tickers in sectors.items():
             print(f"Scanning sector: {sector} with {len(tickers)} tickers")
 
-            data = PairScannerUtils.fetch_price_data(tickers)
+            data = PairScannerUtils.fetch_data(tickers)
+            print(f" Data fetched for {sector}, shape: {data.shape}")
+
+            if data.empty or data.shape[1] < 2:
+                print(f"  ⚠️  Insufficient data for {sector}")
+                continue
+            
+            # Find cointegrated pairs
+            sector_results = self.find_cointegrated_pairs(data, sector)
+            all_results.extend(sector_results)
+        
+        return all_results
+        
+    def main(self):
+        sectors = self.fetch_stocks_by_sector()
+        self.run_scanner(sectors)
         
             
 if __name__ == "__main__":
     scanner = PairsScanner()
-    scanner.fetch_stocks_by_sector()
+    scanner.main()
     

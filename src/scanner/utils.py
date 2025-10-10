@@ -7,6 +7,7 @@ import yfinance as yf
 from statsmodels.tsa.stattools import coint, adfuller
 
 class PairScannerUtils:
+
     @staticmethod
     def find_all_sp500_tickers() -> list[str]:
         """
@@ -60,57 +61,93 @@ class PairScannerUtils:
 
         print(f"\n🏁 Found {len(large_cap_tickers)} tickers with market cap > ${min_market_cap/1e9:.1f}B")
         return large_cap_tickers
+    
+    """ Fetching data """
 
     @staticmethod
-    def fetch_price_data(tickers: list[str], lookback_days: int = 252, interval: str = "1d") -> pd.DataFrame:
+    def fetch_data(tickers: list[str], period:str = "5y", interval: str = "1d") -> pd.DataFrame:
         """ Fetch historical price data for given tickers """
-        if not tickers:
-            return pd.DataFrame()
-        
         print(f"  Fetching data for {len(tickers)} tickers...")
-        data_dict = {}
-        failed_tickers = []
-        successful_tickers = []
-
-
-        # Download all tickers at once.
-
-        end_date = datetime(2025, 10, 10)
-        start_date = end_date - timedelta(days=int(lookback_days * 2))
 
         try:
             tickers_str = ' '.join(tickers)
-            print(f"Downloading from {start_date.date()} to {end_date.date()}")
-            all_data = yf.download(
+            print(f"Downloading...")
+
+            raw_data = yf.download(
                 tickers_str,
-                start=start_date,
-                end=end_date,
+                period=period,
+                interval=interval,
                 progress=False,
-                group_by='ticker',
+                group_by='ticker' if len(tickers) > 1 else None,
                 threads=True,
                 repair=True
             )
 
-            # Check if data was downloaded
-            print(f"Downloaded data shape: {all_data.shape if not all_data.empty else 'EMPTY'}")
-            if not all_data.empty:
-                print(f"Columns: {all_data.columns.tolist()[:5] if len(all_data.columns) > 0 else 'None'}")
+            if raw_data.empty:
+                print(" No data downloaded.")
+                return pd.DataFrame()
+            
+            # Extract price data
+            data_dict = PairScannerUtils._extract_prices(raw_data, tickers)
 
-            for ticker in tickers:
-                try:
-                    if not all_data.empty:
-                        pass
-                except Exception as e:
-                    print(f"Error fetching data for {ticker}: {e}")
+            if not data_dict:
+                print("     No valid ticker data extracted.")
+                return pd.DataFrame()
+            
+            # Build and validate timeframe
+            df = pd.DataFrame(data_dict).ffill().dropna()
+
+            min_required_points = 264 # ~1 year of trading days
+
+            if len(df) < min_required_points:
+                print(f"    Insufficient data points: {len(df) < {min_required_points}}")
+                return pd.DataFrame()
+            
+            print(f"    Successfully loaded: {len(data_dict)} tickers")
+            return df
 
         except Exception as e:
             print(f"Error fetching data: {e}")
 
+    @staticmethod
+    def _extract_prices(raw_data: pd.DataFrame | None, tickers: list[str]) -> dict:
+        data_dict = {}
+
+        if len(tickers) == 1:
+            # Single ticker
+            price_col = PairScannerUtils._get_price_column(raw_data)
+            if price_col is not None:
+                data_dict[tickers[0]] = price_col
+
+        else:
+            # Multiple tickers
+            for ticker in tickers:
+                price_col = PairScannerUtils._get_ticker_price(raw_data, ticker)
+                if price_col is not None and len(price_col.dropna()) > 200: # at least ~200 data points
+                    data_dict[ticker] = price_col
+        
+        return data_dict
+
+    @staticmethod
+    def _get_price_column(data: pd.DataFrame) -> pd.Series | None:
+        """Get price column from simple column structure"""
+        for col_name in ['Adj Close', 'Close']:
+            if col_name in data.columns:
+                return data[col_name]
+        return None
+
+    @staticmethod
+    def _get_ticker_price(data: pd.DataFrame, ticker: list[str]) -> pd.Series | None:
+        """Get price column for specific ticker from MultiIndex"""
+        for col_name in ['Adj Close', 'Close']:
+            if (ticker, col_name) in data.columns:
+                return data[(ticker, col_name)]
+        return None
 
     """ Formulas relevant to pairs trading """
 
     @staticmethod
-    def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float) -> dict:
+    def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float = 2.0) -> dict:
         """ Calculate hedge ratio using OLS regression"""
         try:
             X = stock_x.values.reshape(-1, 1) # 2D array for sklearn
@@ -173,6 +210,7 @@ class PairScannerUtils:
                 'rolling_zscore_series': rolling_zscore
             }
         except Exception as e:
+            print(f"Error processing pair {stock_x}-{stock_y}: {e}")  # Add this line
             return {
                 'hedge_ratio': 1.0,
                 'spread_mean': 0,
