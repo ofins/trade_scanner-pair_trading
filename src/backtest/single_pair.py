@@ -241,7 +241,7 @@ class SinglePairBacktest:
     def generate_results(self, df: pd.DataFrame, trades_df: pd.DataFrame) -> dict:
         """ Generate results that can be used by other modules to produce multi pair reports."""
 
-        max_drawdown, max_drawdown_pct = BacktestUtils.calculate_max_drawdown(trades_df['PnL ($)']) if not trades_df.empty else (0, 0)
+        max_drawdown, max_drawdown_pct = BacktestUtils.calculate_max_drawdown(trades_df['PnL ($)'], self.capital) if not trades_df.empty else (0, 0)
         annualized_return = BacktestUtils.calculate_annualized_return(trades_df['PnL ($)'].sum(), self.capital, df.index) if not trades_df.empty else 0
 
         results = {

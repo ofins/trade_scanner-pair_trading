@@ -120,36 +120,35 @@ class BacktestUtils:
         return pd.DataFrame(trades)
     
     @staticmethod
-    def calculate_max_drawdown(pnl_series: pd.Series) -> tuple[float, float]:
+    def calculate_max_drawdown(pnl_series: pd.Series, initial_capital: float) -> tuple[float, float]:
         """
         Calculate the maximum drawdown from a series of P&L values.
-        
+
         Args:
             pnl_series: Series of P&L values from individual trades
-            
+            initial_capital: Starting capital for the strategy
+
         Returns:
-            Tuple of (max_drawdown_dollars, max_drawdown_percentage)
+            Tuple of (max_drawdown_dollars, max_drawdown_percentage relative to initial capital)
         """
         if pnl_series.empty:
             return 0.0, 0.0
-        
-        # Calculate cumulative P&L starting from 0
-        cumulative_pnl = pnl_series.cumsum()
-        
-        # Calculate running maximum (peak values)
-        running_max = cumulative_pnl.expanding().max()
-        
-        # Calculate drawdown at each point (peak - current value)
-        drawdown = running_max - cumulative_pnl
-        
-        # Return the maximum drawdown as a positive value
+
+        # Calculate equity curve starting from initial capital
+        equity_curve = initial_capital + pnl_series.cumsum()
+
+        # Calculate running maximum (peak equity)
+        running_max = equity_curve.expanding().max()
+
+        # Calculate drawdown at each point (peak - current equity)
+        drawdown = running_max - equity_curve
+
+        # Maximum drawdown in dollars
         max_drawdown_dollars = drawdown.max() if not pd.isna(drawdown.max()) else 0.0
-        
-        # Calculate percentage drawdown
-        max_drawdown_pct = 0.0
-        if not running_max.empty and running_max.max() > 0:
-            max_drawdown_pct = (max_drawdown_dollars / running_max.max()) * 100
-        
+
+        # Calculate percentage drawdown relative to INITIAL CAPITAL (not peak)
+        max_drawdown_pct = (max_drawdown_dollars / initial_capital) * 100 if initial_capital > 0 else 0.0
+
         return max_drawdown_dollars, max_drawdown_pct
 
     @staticmethod

@@ -24,9 +24,11 @@ class BacktestPairTrading:
         pairs_df = CommonUtils.read_xlsx(file_path)
         top_pairs = pairs_df.head(n).copy()
 
-        # Vectorized swap - no loop needed
-        mask = top_pairs['Optimal_Direction'] == 2
-        top_pairs.loc[mask, ['Stock_1', 'Stock_2']] = top_pairs.loc[mask, ['Stock_2', 'Stock_1']].values
+        # Vectorized swap - no loop needed (only if Optimal_Direction column exists)
+        if 'Optimal_Direction' in top_pairs.columns:
+            mask = top_pairs['Optimal_Direction'] == 2
+            top_pairs.loc[mask, ['Stock_1', 'Stock_2']] = top_pairs.loc[mask, ['Stock_2', 'Stock_1']].values
+
 
         return top_pairs
     

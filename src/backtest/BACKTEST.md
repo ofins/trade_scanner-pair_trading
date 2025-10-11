@@ -24,3 +24,11 @@ Calmar ratio: Compares the strategy's Compound Annual Growth Rate (CAGR) to its 
 ### Z-score
 
 - test different z-score interval in same timeframe (e.g. 4h vs 1d in span of 2years)
+
+### calculate_reversion_quality
+
+### check_liquidity
+
+### calculate_correlation_stability
+
+### calculate_volatility_regime
