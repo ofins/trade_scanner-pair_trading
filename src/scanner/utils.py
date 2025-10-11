@@ -115,6 +115,7 @@ class PairScannerUtils:
 
             return {
                 'hedge_ratio': beta,
+                'spread': spread,
                 'spread_mean': spread.mean(),
                 'spread_std': spread.std(),
                 'current_zscore': current_zscore,
@@ -132,6 +133,7 @@ class PairScannerUtils:
             print(f"Error processing pair {stock_x}-{stock_y}: {e}")  # Add this line
             return {
                 'hedge_ratio': 1.0,
+                'spread': pd.Series(dtype=float),
                 'spread_mean': 0,
                 'spread_std': 1,
                 'current_zscore': 0,

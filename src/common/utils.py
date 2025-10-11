@@ -67,7 +67,7 @@ class CommonUtils:
             min_required_points = 264 # ~1 year of trading days
 
             if len(df) < min_required_points:
-                print(f"    Insufficient data points: {len(df) < {min_required_points}}")
+                print(f"    Insufficient data points: {len(df)} < {min_required_points}")
                 return pd.DataFrame()
             
             print(f"    Successfully loaded: {len(data_dict)} tickers")
@@ -104,7 +104,7 @@ class CommonUtils:
         return None
 
     @staticmethod
-    def _get_ticker_price(data: pd.DataFrame, ticker: list[str]) -> pd.Series | None:
+    def _get_ticker_price(data: pd.DataFrame, ticker: str) -> pd.Series | None:
         """Get price column for specific ticker from MultiIndex"""
         for col_name in ['Adj Close', 'Close']:
             if (ticker, col_name) in data.columns:
