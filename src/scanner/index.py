@@ -16,6 +16,7 @@ class PairsScanner:
         self.min_correlation = min_correlation
         self.zscore_window = zscore_window
         self.zscore_entry_threshold = zscore_entry_threshold
+        self.max_pvalue = 0.05
     
     def fetch_stocks_by_sector(self) -> dict[str, list[str]]:
         json_path = os.path.join(os.path.dirname(__file__), "../constants/stock_by_sectors.json")
@@ -70,7 +71,7 @@ class PairsScanner:
                 score2, pvalue2, _ = coint(pair_data[ticker2], pair_data[ticker1])
                 tested += 1
 
-                if pvalue1 < 0.10 or pvalue2 < 0.10:
+                if pvalue1 < self.max_pvalue or pvalue2 < self.max_pvalue:
                 # Use the direction with the lower p-value
                     if pvalue1 < pvalue2:
                         # DIRECTION 1 is better
@@ -87,8 +88,16 @@ class PairsScanner:
 
 
                     spread_stats = PairScannerUtils.calculate_spread_stats(pair_data[stock_x], pair_data[stock_y], zscore_window=self.zscore_window, zscore_entry_threshold=self.zscore_entry_threshold)
-                    spread = pair_data[stock_y] - spread_stats['hedge_ratio'] * pair_data[stock_x]
+                    spread: pd.Series = pair_data[stock_y] - spread_stats['hedge_ratio'] * pair_data[stock_x]
                     spread_adf_pvalue = PairScannerUtils.test_stationarity(spread)
+
+                    zero_cross_count = ((spread.shift(1) * spread) < 0).sum()
+                    half_life = spread_stats['halflife']
+                    hurst = PairScannerUtils.calculate_hurst_exponent(spread)
+
+                    # # Filters
+                    # if half_life < 10 or half_life > 30 or hurst > 0.45 or zero_cross_count < 15 or best_pvalue > 0.05:
+                    #     continue
 
 
                     result = {
@@ -99,13 +108,15 @@ class PairsScanner:
                             'Coint_PValue': best_pvalue,
                             'Coint_Score': best_score,
                             'Optimal_Direction': direction,  # Track which direction was better
+                            'zero_crossings': zero_cross_count,
+                            'Half_Life': half_life,
+                            'Hurst_Exponent': hurst,
                             'Alt_PValue': pvalue2 if direction == 1 else pvalue1,  # Store alternative p-value
                             'Spread_ADF_PValue': spread_adf_pvalue,
                             'Hedge_Ratio': spread_stats['hedge_ratio'],
                             'Spread_Mean': spread_stats['spread_mean'],
                             'Spread_Std': spread_stats['spread_std'],
                             'Current_ZScore': spread_stats['current_zscore'],
-                            'Half_Life': spread_stats['halflife'],
                             'Stock1_Price': pair_data[stock_x].iloc[-1],
                             'Stock2_Price': pair_data[stock_y].iloc[-1],
                             'ZScore_Mean': spread_stats['zscore_mean'],

@@ -180,6 +180,17 @@ class PairScannerUtils:
         except:
             return 1.0  # Return high p-value if test fails
     
+    @staticmethod
+    def calculate_hurst_exponent(series: pd.Series) -> float:
+        """ Calculate Hurst Exponent to assess long-term memory of time series """
+        try:
+            lags = range(2, 20)
+            tau = [np.std(series.diff(lag).dropna()) for lag in lags]
+            poly = np.polyfit(np.log(lags), np.log(tau), 1)
+            hurst = poly[0] * 2.0
+            return hurst
+        except:
+            return 0.5  # Return neutral value if calculation fails
 
 if __name__ == "__main__":
     tickers = PairScannerUtils.find_all_sp500_tickers()
