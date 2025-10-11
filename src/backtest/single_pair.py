@@ -87,30 +87,7 @@ class SinglePairBacktest:
                 exit_price2 = norm2.loc[exit_date] if exit_date in norm2.index else None
 
                 if trade['Position'] == 'LONG':
-                    # LONG spread: BUY stock1 (blue), SELL stock2 (orange)
-                    if entry_price1 is not None:
-                        ax1.annotate('BUY', xy=(entry_date, entry_price1),
-                                   xytext=(0, 15), textcoords='offset points',
-                                   ha='center', fontsize=8, fontweight='bold',
-                                   color='green',
-                                   bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgreen', alpha=0.7),
-                                   arrowprops=dict(arrowstyle='->', color='green', lw=2))
-                    if entry_price2 is not None:
-                        ax1.annotate('SELL', xy=(entry_date, entry_price2),
-                                   xytext=(0, -15), textcoords='offset points',
-                                   ha='center', fontsize=8, fontweight='bold',
-                                   color='red',
-                                   bbox=dict(boxstyle='round,pad=0.3', facecolor='lightcoral', alpha=0.7),
-                                   arrowprops=dict(arrowstyle='->', color='red', lw=2))
-
-                    # Exit markers (opposite)
-                    if exit_price1 is not None:
-                        ax1.scatter(exit_date, exit_price1, color='darkgreen', marker='x', s=100, zorder=10, linewidths=3)
-                    if exit_price2 is not None:
-                        ax1.scatter(exit_date, exit_price2, color='darkred', marker='x', s=100, zorder=10, linewidths=3)
-
-                else:  # SHORT
-                    # SHORT spread: SELL stock1 (blue), BUY stock2 (orange)
+                    # LONG spread: BUY stock2 (orange), SELL stock1 (blue)
                     if entry_price1 is not None:
                         ax1.annotate('SELL', xy=(entry_date, entry_price1),
                                    xytext=(0, 15), textcoords='offset points',
@@ -126,11 +103,34 @@ class SinglePairBacktest:
                                    bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgreen', alpha=0.7),
                                    arrowprops=dict(arrowstyle='->', color='green', lw=2))
 
-                    # Exit markers
+                    # Exit markers (opposite)
                     if exit_price1 is not None:
                         ax1.scatter(exit_date, exit_price1, color='darkred', marker='x', s=100, zorder=10, linewidths=3)
                     if exit_price2 is not None:
                         ax1.scatter(exit_date, exit_price2, color='darkgreen', marker='x', s=100, zorder=10, linewidths=3)
+
+                else:  # SHORT
+                    # SHORT spread: SELL stock2 (orange), BUY stock1 (blue)
+                    if entry_price1 is not None:
+                        ax1.annotate('BUY', xy=(entry_date, entry_price1),
+                                   xytext=(0, 15), textcoords='offset points',
+                                   ha='center', fontsize=8, fontweight='bold',
+                                   color='green',
+                                   bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgreen', alpha=0.7),
+                                   arrowprops=dict(arrowstyle='->', color='green', lw=2))
+                    if entry_price2 is not None:
+                        ax1.annotate('SELL', xy=(entry_date, entry_price2),
+                                   xytext=(0, -15), textcoords='offset points',
+                                   ha='center', fontsize=8, fontweight='bold',
+                                   color='red',
+                                   bbox=dict(boxstyle='round,pad=0.3', facecolor='lightcoral', alpha=0.7),
+                                   arrowprops=dict(arrowstyle='->', color='red', lw=2))
+
+                    # Exit markers
+                    if exit_price1 is not None:
+                        ax1.scatter(exit_date, exit_price1, color='darkgreen', marker='x', s=100, zorder=10, linewidths=3)
+                    if exit_price2 is not None:
+                        ax1.scatter(exit_date, exit_price2, color='darkred', marker='x', s=100, zorder=10, linewidths=3)
 
         ax1.set_title(f'{self.ticker1} vs {self.ticker2} - Normalized Prices with Trade Signals', fontsize=12, fontweight='bold')
         ax1.set_ylabel('Normalized Price (Base=100)')
@@ -151,12 +151,12 @@ class SinglePairBacktest:
                     # LONG spread entry
                     color = 'green'
                     marker = '^'
-                    label_text = f"LONG\nBuy {self.ticker1}\nSell {self.ticker2}"
+                    label_text = f"LONG\nBuy {self.ticker2}\nSell {self.ticker1}"
                 else:
                     # SHORT spread entry
                     color = 'red'
                     marker = 'v'
-                    label_text = f"SHORT\nSell {self.ticker1}\nBuy {self.ticker2}"
+                    label_text = f"SHORT\nSell {self.ticker2}\nBuy {self.ticker1}"
 
                 # Entry marker
                 ax2.scatter(trade['Entry Date'], trade['Entry ZScore'], color=color, marker=marker,

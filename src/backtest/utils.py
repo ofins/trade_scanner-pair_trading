@@ -21,8 +21,9 @@ class BacktestUtils:
             if position is None:
                 if zscore <= -entry_threshold:
                     # LONG spread entry
-                    # Stock 1 is undervalued relative to Stock 2
-                    # Action: BUY stock1, SELL stock2
+                    # Spread = stock2 - beta * stock1 is below mean
+                    # Stock 2 is undervalued relative to Stock 1
+                    # Action: BUY stock2, SELL stock1
                     position = {
                         'type': 'LONG',
                         'entry_date': current_date,
@@ -33,8 +34,9 @@ class BacktestUtils:
                     }
                 elif zscore >= entry_threshold:
                     # SHORT spread entry
-                    # Stock 1 is overvalued relative to Stock 2
-                    # Action: SELL stock1, BUY stock2
+                    # Spread = stock2 - beta * stock1 is above mean
+                    # Stock 2 is overvalued relative to Stock 1
+                    # Action: SELL stock2, BUY stock1
                     position = {
                         'type': 'SHORT',
                         'entry_date': current_date,
@@ -77,13 +79,13 @@ class BacktestUtils:
                     stock2_shares = stock2_allocation / position['stock2_price']
 
                     if position['type'] == 'LONG':
-                        # LONG spread: BUY stock1, SELL stock2
-                        stock1_pnl = stock1_shares * (exit_stock1_price - position['stock1_price'])
-                        stock2_pnl = stock2_shares * (position['stock2_price'] - exit_stock2_price)
-                    else:
-                        # SHORT spread: SELL stock1, BUY stock2
+                        # LONG spread: BUY stock2, SELL stock1
                         stock1_pnl = stock1_shares * (position['stock1_price'] - exit_stock1_price)
                         stock2_pnl = stock2_shares * (exit_stock2_price - position['stock2_price'])
+                    else:
+                        # SHORT spread: SELL stock2, BUY stock1
+                        stock1_pnl = stock1_shares * (exit_stock1_price - position['stock1_price'])
+                        stock2_pnl = stock2_shares * (position['stock2_price'] - exit_stock2_price)
 
                     total_pnl = stock1_pnl + stock2_pnl
                     pnl_percent = (total_pnl / capital) * 100
