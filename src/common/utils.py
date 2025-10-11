@@ -2,6 +2,7 @@
 from datetime import datetime
 import os
 import pandas as pd
+import yfinance as yf
 
 
 class CommonUtils:
@@ -27,3 +28,85 @@ class CommonUtils:
         df = pd.DataFrame(data)
         df.to_excel(full_filepath, index=False)
         print(f"Results saved to {full_filepath}")
+
+    """ Fetching data """
+
+    @staticmethod
+    def fetch_data(tickers: list[str], period:str = "5y", interval: str = "1d") -> pd.DataFrame:
+        """ Fetch historical price data for given tickers """
+        print(f"  Fetching data for {len(tickers)} tickers...")
+
+        try:
+            tickers_str = ' '.join(tickers)
+            print(f"Downloading...")
+
+            raw_data = yf.download(
+                tickers_str,
+                period=period,
+                interval=interval,
+                progress=False,
+                group_by='ticker' if len(tickers) > 1 else None,
+                threads=True,
+                repair=True
+            )
+
+            if raw_data.empty:
+                print(" No data downloaded.")
+                return pd.DataFrame()
+            
+            # Extract price data
+            data_dict = CommonUtils._extract_prices(raw_data, tickers)
+
+            if not data_dict:
+                print("     No valid ticker data extracted.")
+                return pd.DataFrame()
+            
+            # Build and validate timeframe
+            df = pd.DataFrame(data_dict).ffill().dropna()
+
+            min_required_points = 264 # ~1 year of trading days
+
+            if len(df) < min_required_points:
+                print(f"    Insufficient data points: {len(df) < {min_required_points}}")
+                return pd.DataFrame()
+            
+            print(f"    Successfully loaded: {len(data_dict)} tickers")
+            return df
+
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+
+    @staticmethod
+    def _extract_prices(raw_data: pd.DataFrame | None, tickers: list[str]) -> dict:
+        data_dict = {}
+
+        if len(tickers) == 1:
+            # Single ticker
+            price_col = CommonUtils._get_price_column(raw_data)
+            if price_col is not None:
+                data_dict[tickers[0]] = price_col
+
+        else:
+            # Multiple tickers
+            for ticker in tickers:
+                price_col = CommonUtils._get_ticker_price(raw_data, ticker)
+                if price_col is not None and len(price_col.dropna()) > 200: # at least ~200 data points
+                    data_dict[ticker] = price_col
+        
+        return data_dict
+
+    @staticmethod
+    def _get_price_column(data: pd.DataFrame) -> pd.Series | None:
+        """Get price column from simple column structure"""
+        for col_name in ['Adj Close', 'Close']:
+            if col_name in data.columns:
+                return data[col_name]
+        return None
+
+    @staticmethod
+    def _get_ticker_price(data: pd.DataFrame, ticker: list[str]) -> pd.Series | None:
+        """Get price column for specific ticker from MultiIndex"""
+        for col_name in ['Adj Close', 'Close']:
+            if (ticker, col_name) in data.columns:
+                return data[(ticker, col_name)]
+        return None

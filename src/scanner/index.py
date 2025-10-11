@@ -127,7 +127,7 @@ class PairsScanner:
         for sector, tickers in sectors.items():
             print(f"Scanning sector: {sector} with {len(tickers)} tickers")
 
-            data = PairScannerUtils.fetch_data(tickers)
+            data = CommonUtils.fetch_data(tickers)
             print(f" Data fetched for {sector}, shape: {data.shape}")
 
             if data.empty or data.shape[1] < 2:
