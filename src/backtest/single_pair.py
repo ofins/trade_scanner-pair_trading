@@ -277,9 +277,9 @@ if __name__ == "__main__":
     ticker1 = input("Enter first ticker: ").strip().upper()
     ticker2 = input("Enter second ticker: ").strip().upper()
     try:
-        period = int(input("Enter backtest period in years (e.g., 5): ").strip() or "5")
+        period = int(input("Enter backtest period in years (e.g., 2): ").strip() or "2")
     except:
-        period = 5
+        period = 2
 
     backtest = SinglePairBacktest(ticker1, ticker2, period=f"{period}y", zscore_window=60, entry_threshold=2.0, capital=2500, should_plot_results=True)
     backtest.main()
