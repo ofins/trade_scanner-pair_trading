@@ -91,7 +91,9 @@ class PairsScanner:
                     spread: pd.Series = pair_data[stock_y] - spread_stats['hedge_ratio'] * pair_data[stock_x]
                     spread_adf_pvalue = PairScannerUtils.test_stationarity(spread)
 
-                    zero_cross_count = ((spread.shift(1) * spread) < 0).sum()
+                    # Count zero crossings of z-score (mean reversion), not raw spread
+                    rolling_zscore = spread_stats['rolling_zscore_series']
+                    zero_cross_count = ((rolling_zscore.shift(1) * rolling_zscore) < 0).sum()
                     half_life = spread_stats['halflife']
                     hurst = PairScannerUtils.calculate_hurst_exponent(spread)
 
