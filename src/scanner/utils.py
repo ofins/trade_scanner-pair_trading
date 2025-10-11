@@ -75,7 +75,7 @@ class PairScannerUtils:
             beta, intercept = np.linalg.lstsq(X, y, rcond=None)[0]
 
             # Calculate spread
-            spread = stock_y - beta * stock_x - intercept
+            spread = stock_x - beta * stock_y - intercept
 
             # Calculate rolling z-score (using specified window)
             rolling_mean = spread.rolling(window=zscore_window).mean()

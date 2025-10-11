@@ -116,3 +116,31 @@ class BacktestUtils:
                     position = None  # Reset position
         
         return pd.DataFrame(trades)
+    
+    @staticmethod
+    def calculate_max_drawdown(pnl_series: pd.Series) -> float:
+        """
+        Calculate the maximum drawdown from a series of P&L values.
+        
+        Args:
+            pnl_series: Series of P&L values from individual trades
+            
+        Returns:
+            Maximum drawdown as a positive value (e.g., 500.0 for $500 drawdown)
+        """
+        if pnl_series.empty:
+            return 0.0
+        
+        # Calculate cumulative P&L starting from 0
+        cumulative_pnl = pnl_series.cumsum()
+        
+        # Calculate running maximum (peak values)
+        running_max = cumulative_pnl.expanding().max()
+        
+        # Calculate drawdown at each point (peak - current value)
+        drawdown = running_max - cumulative_pnl
+        
+        # Return the maximum drawdown as a positive value
+        max_drawdown = drawdown.max()
+        
+        return max_drawdown if not pd.isna(max_drawdown) else 0.0

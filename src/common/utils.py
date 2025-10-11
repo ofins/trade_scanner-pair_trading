@@ -29,6 +29,18 @@ class CommonUtils:
         df.to_excel(full_filepath, index=False)
         print(f"Results saved to {full_filepath}")
 
+    @staticmethod
+    def read_xlsx(filepath: str) -> pd.DataFrame:
+        """ Read Excel file and return DataFrame """
+        try:
+            df = pd.read_excel(filepath, index_col=0, parse_dates=True)
+            print(f"Loaded data from {filepath} with shape {df.shape}")
+            return df
+        except Exception as e:
+            print(f"Error reading {filepath}: {e}")
+            return pd.DataFrame()
+        
+
     """ Fetching data """
 
     @staticmethod

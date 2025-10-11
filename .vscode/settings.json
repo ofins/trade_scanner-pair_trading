@@ -1,8 +1,11 @@
 {
   "cSpell.words": [
     "Backtest",
+    "Backtesting",
+    "backtests",
     "cointegrated",
     "lookback",
+    "pbar",
     "pvalue",
     "stationarity"
   ]

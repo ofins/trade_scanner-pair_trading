@@ -12,16 +12,17 @@ from common.utils import CommonUtils
 from scanner.utils import PairScannerUtils
 
 class SinglePairBacktest:
-    def __init__(self, ticker1:str, ticker2:str, period:str, zscore_window:int, entry_threshold:float, capital:float):
+    def __init__(self, ticker1:str, ticker2:str, period:str, zscore_window:int, entry_threshold:float, capital:float, should_plot_results:bool = False):
         self.ticker1 = ticker1
         self.ticker2 = ticker2
         self.period = period
         self.zscore_window = zscore_window
         self.entry_threshold = entry_threshold
         self.capital = capital
+        self.should_plot_results = should_plot_results
 
-    def run_test(self):
-        df = CommonUtils.fetch_data([self.ticker1, self.ticker2], period=self.period)
+    def run_test(self) -> dict:
+        df = CommonUtils.fetch_data([self.ticker1, self.ticker2], period=self.period, interval="1d")
         if df is None:
             return
         
@@ -51,9 +52,16 @@ class SinglePairBacktest:
             capital=self.capital
         )
 
-        self.plot_results(df, trades_df)
+        if trades_df is None:
+            print("No trades executed.")
+            return
 
-    def plot_results(self, df, trades_df):
+        if self.should_plot_results:
+            self.plot_results(df, trades_df)
+
+        return self.generate_results(df, trades_df)
+
+    def plot_results(self, df, trades_df) -> None:
         """Plot z-score chart and trade markers"""
         print(f"\n📊 Generating visualization...")
 
@@ -203,6 +211,16 @@ class SinglePairBacktest:
         ax3.set_ylabel('Cumulative P&L ($)')
         ax3.grid(True, alpha=0.3)
 
+        # Align x-axis scales across all subplots
+        x_min, x_max = df.index.min(), df.index.max()
+        ax1.set_xlim(x_min, x_max)
+        ax2.set_xlim(x_min, x_max)
+        ax3.set_xlim(x_min, x_max)
+
+        # Share x-axis formatting
+        for ax in [ax1, ax2, ax3]:
+            ax.tick_params(axis='x', rotation=45)
+
         plt.tight_layout()
 
         # Create directory structure for saving images
@@ -220,6 +238,22 @@ class SinglePairBacktest:
         print(f"   ✓ Chart saved as '{full_filepath}'")
         plt.close()
 
+    def generate_results(self, df: pd.DataFrame, trades_df: pd.DataFrame) -> dict:
+        """ Generate results that can be used by other modules to produce multi pair reports."""
+        results = {
+            'Ticker1': self.ticker1,
+            'Ticker2': self.ticker2,
+            'Total Trades': len(trades_df),
+            'Winning Trades': trades_df['Win'].sum(),
+            'Losing Trades': len(trades_df) - trades_df['Win'].sum(),
+            'Win Rate (%)': (trades_df['Win'].sum() / len(trades_df) * 100) if len(trades_df) > 0 else 0,
+            'Total PnL ($)': trades_df['PnL ($)'].sum(),
+            'Average PnL per Trade ($)': (trades_df['PnL ($)'].mean() if not trades_df.empty else 0),
+            'Max Drawdown ($)': BacktestUtils.calculate_max_drawdown(trades_df['PnL ($)']) if not trades_df.empty else 0,
+            'Hedge Ratio': df['Hedge_Ratio'].iloc[-1] if 'Hedge_Ratio' in df.columns else None,
+            'Final Z-Score': df['ZScore'].iloc[-1] if 'ZScore' in df.columns else None
+        }
+        return results
 
     def main(self):
         self.run_test()
@@ -234,5 +268,5 @@ if __name__ == "__main__":
     except:
         period = 5
 
-    backtest = SinglePairBacktest(ticker1, ticker2, period=f"{period}y", zscore_window=60, entry_threshold=2.0, capital=2500)
+    backtest = SinglePairBacktest(ticker1, ticker2, period=f"{period}y", zscore_window=60, entry_threshold=2.0, capital=2500, should_plot_results=True)
     backtest.main()
