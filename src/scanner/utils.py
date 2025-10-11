@@ -182,14 +182,55 @@ class PairScannerUtils:
     
     @staticmethod
     def calculate_hurst_exponent(series: pd.Series) -> float:
-        """ Calculate Hurst Exponent to assess long-term memory of time series """
+        """
+        Calculate Hurst Exponent using simplified variance method.
+        For spread series, measures mean reversion tendency.
+        H < 0.5: Mean reverting (good for pairs trading)
+        H = 0.5: Random walk
+        H > 0.5: Trending/persistent
+        """
         try:
-            lags = range(2, 20)
-            tau = [np.std(series.diff(lag).dropna()) for lag in lags]
-            poly = np.polyfit(np.log(lags), np.log(tau), 1)
-            hurst = poly[0] * 2.0
+            # Remove NaN and ensure we have enough data
+            series = series.dropna()
+            if len(series) < 100:
+                return 0.5
+
+            # Demean the series (critical for spreads!)
+            series = series - series.mean()
+
+            # Use simplified variance method
+            # For different time lags, calculate variance of differences
+            lags = range(2, min(100, len(series) // 4))
+
+            variances = []
+            valid_lags = []
+
+            for lag in lags:
+                # Calculate differences at this lag
+                diffs = series.diff(lag).dropna()
+
+                if len(diffs) < 10:
+                    continue
+
+                var = np.var(diffs)
+                if var > 0:
+                    variances.append(var)
+                    valid_lags.append(lag)
+
+            if len(variances) < 10:
+                return 0.5
+
+            # Fit log(variance) vs log(lag): variance ~ lag^(2H)
+            # So: log(variance) = 2H * log(lag) + constant
+            # Therefore: H = slope / 2
+            poly = np.polyfit(np.log(valid_lags), np.log(variances), 1)
+            hurst = poly[0] / 2.0  # Divide by 2 because variance scales as lag^(2H)
+
+            # Bound to reasonable range
+            hurst = max(0.0, min(1.0, hurst))
+
             return hurst
-        except:
+        except Exception as e:
             return 0.5  # Return neutral value if calculation fails
 
 if __name__ == "__main__":

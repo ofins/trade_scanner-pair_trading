@@ -100,7 +100,7 @@ class PairsScanner:
 
                     # Quality filters for risk management and profitability
                     # 1. Cointegration strength (already filtered at line 74, but double-check)
-                    if best_pvalue > 0.05:
+                    if best_pvalue > 0.01:
                         continue
 
                     # 2. Spread stationarity - ADF test must be significant
@@ -108,19 +108,19 @@ class PairsScanner:
                         continue
 
                     # 3. Half-life: too fast = noise/transaction costs, too slow = capital inefficiency
-                    if half_life is None or half_life < 1 or half_life > 60:
+                    if half_life is None or half_life < 10 or half_life > 30:
                         continue
 
                     # 4. Hurst exponent: < 0.5 = mean reverting, closer to 0 = stronger reversion
                     if hurst >= 0.5:
                         continue
 
-                    # 5. Zero crossings: at least 5 crossings in 2 years (realistic)
-                    if zero_cross_count < 5:
+                    # 5. Zero crossings: at least 15 crossings in 2 years (realistic)
+                    if zero_cross_count < 15:
                         continue
 
                     # 6. Mean reversion success rate: require at least 50% historical success
-                    if reversion_rate is not None and reversion_rate < 50:
+                    if reversion_rate is not None and reversion_rate < 75:
                         continue
 
                     # 7. Current z-score filter: avoid pairs at extremes (risk of breakdown)
