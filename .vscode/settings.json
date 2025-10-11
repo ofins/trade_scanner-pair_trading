@@ -3,10 +3,12 @@
     "Backtest",
     "Backtesting",
     "backtests",
+    "calmar",
     "cointegrated",
     "lookback",
     "pbar",
     "pvalue",
+    "sortino",
     "stationarity"
   ]
 }

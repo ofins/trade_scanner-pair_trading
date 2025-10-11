@@ -240,18 +240,31 @@ class SinglePairBacktest:
 
     def generate_results(self, df: pd.DataFrame, trades_df: pd.DataFrame) -> dict:
         """ Generate results that can be used by other modules to produce multi pair reports."""
+
+        max_drawdown, max_drawdown_pct = BacktestUtils.calculate_max_drawdown(trades_df['PnL ($)']) if not trades_df.empty else (0, 0)
+        annualized_return = BacktestUtils.calculate_annualized_return(trades_df['PnL ($)'].sum(), self.capital, df.index) if not trades_df.empty else 0
+
         results = {
             'Ticker1': self.ticker1,
             'Ticker2': self.ticker2,
             'Total Trades': len(trades_df),
             'Winning Trades': trades_df['Win'].sum(),
             'Losing Trades': len(trades_df) - trades_df['Win'].sum(),
+            'Average trade duration (days)': (trades_df['Days held'].mean() if not trades_df.empty else 0),
             'Win Rate (%)': (trades_df['Win'].sum() / len(trades_df) * 100) if len(trades_df) > 0 else 0,
+            'Profit factor': BacktestUtils.calculate_profit_factor(trades_df) if not trades_df.empty else 0,
             'Total PnL ($)': trades_df['PnL ($)'].sum(),
+            'Compound Annual Growth Rate (%)': BacktestUtils.calculate_cagr(trades_df['PnL ($)'].sum(), self.capital, df.index) if not trades_df.empty else 0,
+            'Annualized Return (%)': annualized_return,
             'Average PnL per Trade ($)': (trades_df['PnL ($)'].mean() if not trades_df.empty else 0),
-            'Max Drawdown ($)': BacktestUtils.calculate_max_drawdown(trades_df['PnL ($)']) if not trades_df.empty else 0,
+            'Max Drawdown ($)': max_drawdown,
+            'Max Drawdown (%)': max_drawdown_pct,
             'Hedge Ratio': df['Hedge_Ratio'].iloc[-1] if 'Hedge_Ratio' in df.columns else None,
-            'Final Z-Score': df['ZScore'].iloc[-1] if 'ZScore' in df.columns else None
+            'Final Z-Score': df['ZScore'].iloc[-1] if 'ZScore' in df.columns else None,
+            'Sharpe ratio': BacktestUtils.calculate_sharpe_ratio(trades_df['PnL ($)']) if not trades_df.empty else 0,
+            'Sortino ratio': BacktestUtils.calculate_sortino_ratio(trades_df['PnL ($)']) if not trades_df.empty else 0,
+            'Calmar ratio': BacktestUtils.calculate_calmar_ratio(annualized_return, max_drawdown_pct) if not trades_df.empty else 0,
+            'Volatility': BacktestUtils.calculate_volatility(trades_df['PnL ($)'], annualized=True) if not trades_df.empty else 0,
         }
         return results
 

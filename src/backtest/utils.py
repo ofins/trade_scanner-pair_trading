@@ -118,7 +118,7 @@ class BacktestUtils:
         return pd.DataFrame(trades)
     
     @staticmethod
-    def calculate_max_drawdown(pnl_series: pd.Series) -> float:
+    def calculate_max_drawdown(pnl_series: pd.Series) -> tuple[float, float]:
         """
         Calculate the maximum drawdown from a series of P&L values.
         
@@ -126,10 +126,10 @@ class BacktestUtils:
             pnl_series: Series of P&L values from individual trades
             
         Returns:
-            Maximum drawdown as a positive value (e.g., 500.0 for $500 drawdown)
+            Tuple of (max_drawdown_dollars, max_drawdown_percentage)
         """
         if pnl_series.empty:
-            return 0.0
+            return 0.0, 0.0
         
         # Calculate cumulative P&L starting from 0
         cumulative_pnl = pnl_series.cumsum()
@@ -141,6 +141,245 @@ class BacktestUtils:
         drawdown = running_max - cumulative_pnl
         
         # Return the maximum drawdown as a positive value
-        max_drawdown = drawdown.max()
+        max_drawdown_dollars = drawdown.max() if not pd.isna(drawdown.max()) else 0.0
         
-        return max_drawdown if not pd.isna(max_drawdown) else 0.0
+        # Calculate percentage drawdown
+        max_drawdown_pct = 0.0
+        if not running_max.empty and running_max.max() > 0:
+            max_drawdown_pct = (max_drawdown_dollars / running_max.max()) * 100
+        
+        return max_drawdown_dollars, max_drawdown_pct
+
+    @staticmethod
+    def calculate_annualized_return(total_pnl: float, initial_capital: float, date_index: pd.DatetimeIndex) -> float:
+        """ Calculate annualized return given total PnL, initial capital, and date index """
+        if initial_capital <= 0 or date_index.empty:
+            return 0.0
+        
+        total_days = (date_index[-1] - date_index[0]).days
+        if total_days <= 0:
+            return 0.0
+        
+        years = total_days / 365.25
+        total_return = total_pnl / initial_capital
+        annualized_return = (1 + total_return) ** (1 / years) - 1
+        return annualized_return * 100  # Return as percentage
+    
+    @staticmethod
+    def calculate_cagr(total_pnl: float, initial_capital: float, date_index: pd.DatetimeIndex) -> float:
+        """
+        Calculate Compound Annual Growth Rate (CAGR)
+        
+        Args:
+            total_pnl: Total profit/loss
+            initial_capital: Starting capital
+            date_index: DatetimeIndex for calculating time period
+        
+        Returns:
+            CAGR as percentage
+        """
+        if initial_capital <= 0 or date_index.empty:
+            return 0.0
+        
+        total_days = (date_index[-1] - date_index[0]).days
+        if total_days <= 0:
+            return 0.0
+        
+        years = total_days / 365.25
+        final_value = initial_capital + total_pnl
+        
+        if final_value <= 0 or years <= 0:
+            return 0.0
+        
+        cagr = ((final_value / initial_capital) ** (1 / years)) - 1
+        return cagr * 100  # Return as percentage
+    
+    @staticmethod
+    def calculate_sharpe_ratio(pnl_series: pd.Series, risk_free_rate: float = 0.02) -> float:
+        """
+        Calculate Sharpe ratio from P&L series
+        
+        Args:
+            pnl_series: Series of P&L values from individual trades
+            risk_free_rate: Annual risk-free rate (default 2%)
+        
+        Returns:
+            Sharpe ratio
+        """
+        if pnl_series.empty or pnl_series.std() == 0:
+            return 0.0
+        
+        # Convert to daily returns (assuming trades are roughly daily frequency)
+        daily_rf_rate = risk_free_rate / 252  # 252 trading days per year
+        excess_returns = pnl_series - daily_rf_rate
+        
+        return excess_returns.mean() / pnl_series.std() if pnl_series.std() > 0 else 0.0
+    
+    @staticmethod
+    def calculate_volatility(pnl_series: pd.Series, annualized: bool = True) -> float:
+        """
+        Calculate volatility of P&L series
+        
+        Args:
+            pnl_series: Series of P&L values
+            annualized: Whether to annualize the volatility
+        
+        Returns:
+            Volatility (standard deviation)
+        """
+        if pnl_series.empty:
+            return 0.0
+        
+        volatility = pnl_series.std()
+        if annualized:
+            volatility *= (252 ** 0.5)  # Annualize assuming 252 trading days
+        
+        return volatility
+    
+    @staticmethod
+    def calculate_max_consecutive_losses(trades_df: pd.DataFrame) -> int:
+        """
+        Calculate maximum consecutive losing trades
+        
+        Args:
+            trades_df: DataFrame with 'Win' column (boolean)
+        
+        Returns:
+            Maximum number of consecutive losses
+        """
+        if trades_df.empty or 'Win' not in trades_df.columns:
+            return 0
+        
+        max_losses = 0
+        current_losses = 0
+        
+        for win in trades_df['Win']:
+            if not win:
+                current_losses += 1
+                max_losses = max(max_losses, current_losses)
+            else:
+                current_losses = 0
+        
+        return max_losses
+    
+    @staticmethod
+    def calculate_max_consecutive_wins(trades_df: pd.DataFrame) -> int:
+        """
+        Calculate maximum consecutive winning trades
+        
+        Args:
+            trades_df: DataFrame with 'Win' column (boolean)
+        
+        Returns:
+            Maximum number of consecutive wins
+        """
+        if trades_df.empty or 'Win' not in trades_df.columns:
+            return 0
+        
+        max_wins = 0
+        current_wins = 0
+        
+        for win in trades_df['Win']:
+            if win:
+                current_wins += 1
+                max_wins = max(max_wins, current_wins)
+            else:
+                current_wins = 0
+        
+        return max_wins
+    
+    @staticmethod
+    def calculate_profit_factor(trades_df: pd.DataFrame) -> float:
+        """
+        Calculate profit factor (gross profit / gross loss)
+        
+        Args:
+            trades_df: DataFrame with 'PnL ($)' column
+        
+        Returns:
+            Profit factor
+        """
+        if trades_df.empty or 'PnL ($)' not in trades_df.columns:
+            return 0.0
+        
+        gross_profit = trades_df[trades_df['PnL ($)'] > 0]['PnL ($)'].sum()
+        gross_loss = abs(trades_df[trades_df['PnL ($)'] < 0]['PnL ($)'].sum())
+        
+        return gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0.0
+    
+    @staticmethod
+    def calculate_average_trade_duration(trades_df: pd.DataFrame) -> float:
+        """
+        Calculate average trade duration in days
+        
+        Args:
+            trades_df: DataFrame with 'Days held' column
+        
+        Returns:
+            Average trade duration in days
+        """
+        if trades_df.empty or 'Days held' not in trades_df.columns:
+            return 0.0
+        
+        return trades_df['Days held'].mean()
+    
+    @staticmethod
+    def calculate_recovery_factor(total_pnl: float, max_drawdown: float) -> float:
+        """
+        Calculate recovery factor (total return / max drawdown)
+        
+        Args:
+            total_pnl: Total profit/loss
+            max_drawdown: Maximum drawdown
+        
+        Returns:
+            Recovery factor
+        """
+        if max_drawdown == 0:
+            return float('inf') if total_pnl > 0 else 0.0
+        
+        return total_pnl / max_drawdown
+    
+    @staticmethod
+    def calculate_calmar_ratio(annualized_return: float, max_drawdown_pct: float) -> float:
+        """
+        Calculate Calmar ratio (annualized return / max drawdown percentage)
+        
+        Args:
+            annualized_return: Annualized return percentage
+            max_drawdown_pct: Maximum drawdown as percentage
+        
+        Returns:
+            Calmar ratio
+        """
+        if max_drawdown_pct == 0:
+            return float('inf') if annualized_return > 0 else 0.0
+        
+        return annualized_return / max_drawdown_pct
+    
+    @staticmethod
+    def calculate_sortino_ratio(pnl_series: pd.Series, risk_free_rate: float = 0.02) -> float:
+        """
+        Calculate Sortino ratio (uses downside deviation instead of total volatility)
+        
+        Args:
+            pnl_series: Series of P&L values
+            risk_free_rate: Annual risk-free rate
+        
+        Returns:
+            Sortino ratio
+        """
+        if pnl_series.empty:
+            return 0.0
+        
+        daily_rf_rate = risk_free_rate / 252
+        excess_returns = pnl_series - daily_rf_rate
+        
+        # Calculate downside deviation (only negative returns)
+        downside_returns = excess_returns[excess_returns < 0]
+        if len(downside_returns) == 0:
+            return float('inf') if excess_returns.mean() > 0 else 0.0
+        
+        downside_deviation = downside_returns.std()
+        
+        return excess_returns.mean() / downside_deviation if downside_deviation > 0 else 0.0
