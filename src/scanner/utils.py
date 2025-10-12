@@ -66,16 +66,52 @@ class PairScannerUtils:
     """ Formulas relevant to pairs trading """
 
     @staticmethod
-    def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float = 2.0) -> dict:
-        """ Calculate comprehensive spread statistics for pairs trading. """
-        try:
-            X = stock_x.values.reshape(-1, 1) # 2D array for sklearn
-            y = stock_y.values
-            X = np.column_stack([X, np.ones(len(X))])
-            beta, intercept = np.linalg.lstsq(X, y, rcond=None)[0]
+    def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float = 2.0, use_rolling_beta: bool = False, beta_lookback: int = 252) -> dict:
+        """
+        Calculate comprehensive spread statistics for pairs trading.
 
-            # Calculate spread
-            spread = stock_y - beta * stock_x - intercept
+        Args:
+            stock_x: Price series for first stock
+            stock_y: Price series for second stock
+            zscore_window: Window size for z-score calculation (typically 60 days)
+            zscore_entry_threshold: Threshold for entry signals
+            use_rolling_beta: If True, use rolling beta. If False, use static beta from all data (recommended).
+            beta_lookback: Lookback period for beta calculation when use_rolling_beta=True (default 252 = 1 year)
+
+        Note: For most use cases, static beta (use_rolling_beta=False) is recommended as it provides
+        a stable hedge ratio while the z-score window captures mean reversion signals.
+        """
+        try:
+            if use_rolling_beta:
+                # Calculate rolling beta and spread with separate beta window
+                rolling_beta_series = pd.Series(index=stock_x.index, dtype=float)
+                rolling_intercept_series = pd.Series(index=stock_x.index, dtype=float)
+                spread = pd.Series(index=stock_x.index, dtype=float)
+
+                # Use beta_lookback for beta calculation (separate from z-score window)
+                for i in range(beta_lookback, len(stock_x)):
+                    # Use longer window for stable beta estimation
+                    window_x = stock_x.iloc[i-beta_lookback:i].values.reshape(-1, 1)
+                    window_y = stock_y.iloc[i-beta_lookback:i].values
+
+                    X_with_intercept = np.column_stack([window_x, np.ones(len(window_x))])
+                    beta, intercept = np.linalg.lstsq(X_with_intercept, window_y, rcond=None)[0]
+
+                    rolling_beta_series.iloc[i] = beta
+                    rolling_intercept_series.iloc[i] = intercept
+                    spread.iloc[i] = stock_y.iloc[i] - beta * stock_x.iloc[i] - intercept
+
+                # Use the most recent beta as the "current" hedge ratio
+                beta = rolling_beta_series.iloc[-1]
+            else:
+                # Static beta calculated from all data (RECOMMENDED - default behavior)
+                X = stock_x.values.reshape(-1, 1)
+                y = stock_y.values
+                X = np.column_stack([X, np.ones(len(X))])
+                beta, intercept = np.linalg.lstsq(X, y, rcond=None)[0]
+
+                # Calculate spread using static beta
+                spread = stock_y - beta * stock_x - intercept
 
             # Calculate rolling z-score (using specified window)
             rolling_mean = spread.rolling(window=zscore_window).mean()
