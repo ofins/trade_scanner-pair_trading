@@ -247,13 +247,19 @@ class SinglePairBacktest:
 
         max_drawdown, max_drawdown_pct = BacktestUtils.calculate_max_drawdown(trades_df['PnL ($)'], self.capital) if not trades_df.empty else (0, 0)
         annualized_return = BacktestUtils.calculate_annualized_return(trades_df['PnL ($)'].sum(), self.capital, df.index) if not trades_df.empty else 0
+        current_zscore = df['ZScore'].iloc[-1] if 'ZScore' in df.columns else None
 
         results = {
             'Ticker1': self.ticker1,
             'Ticker2': self.ticker2,
+            'Can Trade': 'YES' if abs(current_zscore) >= self.entry_threshold else 'NO',
             'Total Trades': len(trades_df),
             'Winning Trades': trades_df['Win'].sum() if not trades_df.empty else 0,
+            'Average winner': (trades_df[trades_df['Win']]['PnL ($)'].mean() if not trades_df[trades_df['Win']].empty else 0),
+            'Max win': (trades_df[trades_df['Win']]['PnL ($)'].max() if not trades_df[trades_df['Win']].empty else 0),
             'Losing Trades': (len(trades_df) - trades_df['Win'].sum()) if not trades_df.empty else 0,
+            'Average loser': (trades_df[~trades_df['Win']]['PnL ($)'].mean() if not trades_df[~trades_df['Win']].empty else 0),
+            'Max loser': (trades_df[~trades_df['Win']]['PnL ($)'].min() if not trades_df[~trades_df['Win']].empty else 0),
             'Average trade duration (days)': (trades_df['Days held'].mean() if not trades_df.empty else 0),
             'Win Rate (%)': (trades_df['Win'].sum() / len(trades_df) * 100) if len(trades_df) > 0 else 0,
             'Profit factor': BacktestUtils.calculate_profit_factor(trades_df) if not trades_df.empty else 0,
@@ -264,7 +270,7 @@ class SinglePairBacktest:
             'Max Drawdown ($)': max_drawdown,
             'Max Drawdown (%)': max_drawdown_pct,
             'Hedge Ratio': df['Hedge_Ratio'].iloc[-1] if 'Hedge_Ratio' in df.columns else None,
-            'Final Z-Score': df['ZScore'].iloc[-1] if 'ZScore' in df.columns else None,
+            'Final Z-Score': current_zscore,
             'Sharpe ratio': BacktestUtils.calculate_sharpe_ratio(trades_df['PnL ($)']) if not trades_df.empty else 0,
             'Sortino ratio': BacktestUtils.calculate_sortino_ratio(trades_df['PnL ($)']) if not trades_df.empty else 0,
             'Calmar ratio': BacktestUtils.calculate_calmar_ratio(annualized_return, max_drawdown_pct) if not trades_df.empty else 0,

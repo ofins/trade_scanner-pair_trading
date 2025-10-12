@@ -4,8 +4,10 @@ import pandas as pd
 from tqdm import tqdm
 
 from datetime import datetime
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+from backtest.utils import BacktestUtils
 from backtest.single_pair import SinglePairBacktest
 from common.utils import CommonUtils
 
@@ -44,7 +46,7 @@ class BacktestPairTrading:
             pbar.set_description(f"Backtesting {pair_name}")
 
             try:
-                pair_tester = SinglePairBacktest(stock1, stock2, period="2y",
+                pair_tester = SinglePairBacktest(stock1, stock2, period="5y",
                     zscore_window=60,
                     entry_threshold=2.0,
                     capital=2500,
@@ -65,6 +67,14 @@ class BacktestPairTrading:
         top_pairs = self.get_top_pairs()
         
         results = self.run_backtests(top_pairs)
+
+        # Print summary from results
+        
+        # Average metrics
+        avg_metrics = BacktestUtils.calculate_average_metrics(results)
+        print("\n📊 Average Backtest Metrics:")
+        for key, value in avg_metrics.items():
+            print(f"  {key}: {value}")
 
         if results:
             CommonUtils.save_to_xlsx(results, "backtest_pair_trading_results", base_folder="__reports__")

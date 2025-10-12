@@ -147,19 +147,19 @@ class BacktestUtils:
         # Filter 1: Half-life (should be reasonable for mean reversion)
         # Too short (<10 days): might be noise
         # Too long (>90 days): too slow to be profitable
-        if not (10 <= half_life <= 30):
-            if debug:
-                print(f"[{df.index[index]}] Rejected: Half-life out of range: {half_life:.2f} days")
-            return False
+        # if not (10 <= half_life <= 30):
+        #     if debug:
+        #         print(f"[{df.index[index]}] Rejected: Half-life out of range: {half_life:.2f} days")
+        #     return False
 
         # Filter 2: Hurst exponent (< 0.5 indicates mean reversion)
         # < 0.4: strong mean reversion
         # 0.4-0.5: moderate mean reversion
         # > 0.5: trending (avoid)
-        if hurst >= 0.5:
-            if debug:
-                print(f"[{df.index[index]}] Rejected: Hurst too high (trending): {hurst:.3f}")
-            return False
+        # if hurst >= 0.5:
+        #     if debug:
+        #         print(f"[{df.index[index]}] Rejected: Hurst too high (trending): {hurst:.3f}")
+        #     return False
 
         # # Filter 3: ADF p-value (< 0.05 is statistically significant stationarity)
         # # Relaxed to 0.1 to allow more trades while still maintaining quality
@@ -171,6 +171,40 @@ class BacktestUtils:
         if debug:
             print(f"[{df.index[index]}] ✓ ACCEPTED: HL={half_life:.2f}, H={hurst:.3f}, ADF={adf_p_value:.3f}")
         return True
+
+    """ Performance metrics """
+    @staticmethod
+    def calculate_average_metrics(results: list[dict]) -> dict:
+        """ Calculate average metrics across multiple backtest results """
+        import math
+
+        if not results:
+            return {}
+
+        avg_metrics = {}
+        excluded = {'Ticker1', 'Ticker2'}
+
+        keys = [key for key in results[0].keys() if key not in excluded]
+
+        # Do not count zeros, None, or inf in averages
+        for key in keys:
+            if isinstance(results[0][key], (int, float)):
+                # Filter out zeros, None, inf, and -inf
+                valid_values = [
+                    result[key] for result in results
+                    if result[key] != 0
+                    and result[key] is not None
+                    and not math.isinf(result[key])
+                ]
+
+                if len(valid_values) > 0:
+                    avg_metrics[key] = sum(valid_values) / len(valid_values)
+                else:
+                    avg_metrics[key] = 0  # Default to 0 if no valid values
+            else:
+                avg_metrics[key] = results[0][key]
+
+        return avg_metrics
 
     """ Compute various performance metrics from trades DataFrame """
     @staticmethod
