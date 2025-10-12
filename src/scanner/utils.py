@@ -67,7 +67,7 @@ class PairScannerUtils:
 
     @staticmethod
     def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float = 2.0) -> dict:
-        """ Calculate hedge ratio using OLS regression"""
+        """ Calculate comprehensive spread statistics for pairs trading. """
         try:
             X = stock_x.values.reshape(-1, 1) # 2D array for sklearn
             y = stock_y.values
@@ -88,7 +88,27 @@ class PairScannerUtils:
             # Calculate full-period z-score for comparison
             full_zscore = (spread - spread.mean()) / spread.std()
 
+            # Calculate half-life of mean reversion (scalar for current)
             halflife = PairScannerUtils.calculate_half_life(spread)
+
+            # Calculate rolling Hurst exponent
+            rolling_hurst = pd.Series(index=spread.index, dtype=float)
+            for i in range(zscore_window, len(spread)):
+                window_spread = spread.iloc[i-zscore_window:i]
+                rolling_hurst.iloc[i] = PairScannerUtils.calculate_hurst_exponent(window_spread)
+
+            # Calculate rolling Half-Life
+            rolling_halflife = pd.Series(index=spread.index, dtype=float)
+            for i in range(zscore_window, len(spread)):
+                window_spread = spread.iloc[i-zscore_window:i]
+                hl = PairScannerUtils.calculate_half_life(window_spread)
+                rolling_halflife.iloc[i] = hl if hl and 0 < hl < 365 else np.nan
+
+            # Calculate rolling ADF p-value
+            rolling_adf = pd.Series(index=spread.index, dtype=float)
+            for i in range(zscore_window, len(spread)):
+                window_spread = spread.iloc[i-zscore_window:i]
+                rolling_adf.iloc[i] = PairScannerUtils.test_stationarity(window_spread)
 
             # Calculate historical z-score statistics
             zscore_mean = rolling_zscore.dropna().mean()
@@ -127,10 +147,13 @@ class PairScannerUtils:
                 'zscore_max': zscore_max,
                 'reversion_rate': reversion_rate,
                 'spread_series': spread,
-                'rolling_zscore_series': rolling_zscore
+                'rolling_zscore_series': rolling_zscore,
+                'hurst': rolling_hurst,
+                'halflife_series': rolling_halflife,
+                'adf_pvalue': rolling_adf
             }
         except Exception as e:
-            print(f"Error processing pair {stock_x}-{stock_y}: {e}")  # Add this line
+            print(f"Error processing pair {stock_x}-{stock_y}: {e}")
             return {
                 'hedge_ratio': 1.0,
                 'spread': pd.Series(dtype=float),
@@ -144,8 +167,11 @@ class PairScannerUtils:
                 'zscore_min': 0,
                 'zscore_max': 0,
                 'reversion_rate': None,
-                'spread_series': None,
-                'rolling_zscore_series': None
+                'spread_series': pd.Series(dtype=float),
+                'rolling_zscore_series': pd.Series(dtype=float),
+                'hurst': pd.Series(dtype=float),
+                'halflife_series': pd.Series(dtype=float),
+                'adf_pvalue': pd.Series(dtype=float)
             }
         
     @staticmethod
@@ -192,7 +218,8 @@ class PairScannerUtils:
         try:
             # Remove NaN and ensure we have enough data
             series = series.dropna()
-            if len(series) < 100:
+            # Require at least 20 data points for meaningful calculation
+            if len(series) < 20:
                 return 0.5
 
             # Demean the series (critical for spreads!)
@@ -200,7 +227,12 @@ class PairScannerUtils:
 
             # Use simplified variance method
             # For different time lags, calculate variance of differences
-            lags = range(2, min(100, len(series) // 4))
+            # Adjust max lag based on series length
+            max_lag = min(len(series) // 4, 100)
+            if max_lag < 3:
+                return 0.5
+
+            lags = range(2, max_lag)
 
             variances = []
             valid_lags = []
@@ -209,7 +241,7 @@ class PairScannerUtils:
                 # Calculate differences at this lag
                 diffs = series.diff(lag).dropna()
 
-                if len(diffs) < 10:
+                if len(diffs) < 5:
                     continue
 
                 var = np.var(diffs)
@@ -217,7 +249,8 @@ class PairScannerUtils:
                     variances.append(var)
                     valid_lags.append(lag)
 
-            if len(variances) < 10:
+            # Need at least 5 valid variance points for regression
+            if len(variances) < 5:
                 return 0.5
 
             # Fit log(variance) vs log(lag): variance ~ lag^(2H)

@@ -19,7 +19,7 @@ class BacktestUtils:
 
             # Entry logic
             if position is None:
-                if zscore <= -entry_threshold:
+                if zscore <= -entry_threshold and BacktestUtils.is_good_entry(df, i):
                     # LONG spread entry
                     # Spread = stock2 - beta * stock1 is below mean
                     # Stock 2 is undervalued relative to Stock 1
@@ -32,7 +32,7 @@ class BacktestUtils:
                         'stock2_price': df[stock2].iloc[i],
                         'hedge_ratio': df['Hedge_Ratio'].iloc[i]
                     }
-                elif zscore >= entry_threshold:
+                elif zscore >= entry_threshold and BacktestUtils.is_good_entry(df, i): 
                     # SHORT spread entry
                     # Spread = stock2 - beta * stock1 is above mean
                     # Stock 2 is overvalued relative to Stock 1
@@ -119,6 +119,20 @@ class BacktestUtils:
         
         return pd.DataFrame(trades)
     
+    """ Filters """
+
+    @staticmethod
+    def is_good_entry(df: pd.DataFrame, index: int) -> bool:
+        """ Entry filter logic that considers current half-life, hurst, ADF p-value """
+        half_life = df['Half_Life'].iloc[index]
+        hurst = df['Hurst'].iloc[index]
+        adf_p_value = df['ADF_PValue'].iloc[index]
+
+        if half_life < 30 and hurst < 0.5 and adf_p_value < 0.05:
+            return True
+        return False
+
+    """ Compute various performance metrics from trades DataFrame """
     @staticmethod
     def calculate_max_drawdown(pnl_series: pd.Series, initial_capital: float) -> tuple[float, float]:
         """

@@ -37,6 +37,10 @@ class SinglePairBacktest:
         df['ZScore'] = stats.get('rolling_zscore_series', pd.Series(dtype=float))
         df['Hedge_Ratio'] = stats.get('hedge_ratio', 1.0)
 
+        df['Hurst'] = stats.get('hurst', pd.Series(dtype=float))
+        df['Half_Life'] = stats.get('halflife_series', pd.Series(dtype=float))
+        df['ADF_PValue'] = stats.get('adf_pvalue', pd.Series(dtype=float))
+
         if not stats:
             print("No stats calculated.")
             return
