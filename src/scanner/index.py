@@ -4,6 +4,8 @@ import yfinance as yf
 import json
 import os
 import sys
+import gc
+import time
 from statsmodels.tsa.stattools import coint, adfuller
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -167,17 +169,27 @@ class PairsScanner:
         for sector, tickers in sectors.items():
             print(f"Scanning sector: {sector} with {len(tickers)} tickers")
 
-            data = CommonUtils.fetch_data(tickers, period="2y", interval="1d")
+            data = CommonUtils.fetch_data(tickers, start="2021-01-01", end="2023-01-01", interval="1d")
             print(f" Data fetched for {sector}, shape: {data.shape}")
 
             if data.empty or data.shape[1] < 2:
                 print(f"  ⚠️  Insufficient data for {sector}")
+                # Force garbage collection to free up resources
+                del data
+                gc.collect()
                 continue
-            
+
             # Find cointegrated pairs
             sector_results = self.find_cointegrated_pairs(data, sector)
             all_results.extend(sector_results)
-        
+
+            # Force garbage collection after each sector to free up file handles
+            del data
+            gc.collect()
+
+            # Small delay to allow file handles to close
+            time.sleep(0.5)
+
         return all_results
         
     def main(self):

@@ -44,23 +44,50 @@ class CommonUtils:
     """ Fetching data """
 
     @staticmethod
-    def fetch_data(tickers: list[str], period:str = "5y", interval: str = "1d") -> pd.DataFrame:
-        """ Fetch historical price data for given tickers """
+    def fetch_data(tickers: list[str], period: str = None, start: str = None, end: str = None, interval: str = "1d") -> pd.DataFrame:
+        """
+        Fetch historical price data for given tickers
+
+        Args:
+            tickers: List of ticker symbols
+            period: Period to download (e.g., "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max")
+            start: Start date string (YYYY-MM-DD) - used with end parameter
+            end: End date string (YYYY-MM-DD) - used with start parameter
+            interval: Data interval (e.g., "1d", "1h", "1m")
+
+        Note: Either period OR (start and end) should be provided, not both
+        """
         print(f"  Fetching data for {len(tickers)} tickers...")
 
         try:
             tickers_str = ' '.join(tickers)
             print(f"Downloading...")
 
-            raw_data = yf.download(
-                tickers_str,
-                period=period,
-                interval=interval,
-                progress=False,
-                group_by='ticker' if len(tickers) > 1 else None,
-                threads=True,
-                repair=True
-            )
+            # Build download parameters based on what's provided
+            download_params = {
+                'tickers': tickers_str,
+                'interval': interval,
+                'progress': False,
+                'group_by': 'ticker' if len(tickers) > 1 else None,
+                'threads': True,
+                'repair': True
+            }
+
+            # Add either period or start/end
+            if start is not None and end is not None:
+                download_params['start'] = start
+                download_params['end'] = end
+            elif period is not None:
+                download_params['period'] = period
+            else:
+                # Default to 2y if nothing specified
+                download_params['period'] = '2y'
+
+            raw_data = yf.download(**download_params)
+
+            # Explicitly close any connections from yfinance
+            import gc
+            gc.collect()
 
             if raw_data.empty:
                 print(" No data downloaded.")

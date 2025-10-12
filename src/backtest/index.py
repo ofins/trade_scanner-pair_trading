@@ -46,7 +46,7 @@ class BacktestPairTrading:
             pbar.set_description(f"Backtesting {pair_name}")
 
             try:
-                pair_tester = SinglePairBacktest(stock1, stock2, period="5y",
+                pair_tester = SinglePairBacktest(stock1, stock2, period="2y",
                     zscore_window=60,
                     entry_threshold=2.0,
                     capital=2500,

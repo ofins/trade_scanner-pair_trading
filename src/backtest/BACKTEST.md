@@ -136,6 +136,10 @@ Avg/trade = 54; avg mdd = 45; avg mdd% = 1.79; winrate = 80%
 half-life (10-30), Hurst < 053
 Avg/trade = 73; avg mdd = 75; avg mdd% = 3.03; winrate = 79%
 
+### Rolling window co-integration backtest
+
+- we should be scanning once every week/month for backtest instead of using same set to backtest everything.
+
 ### Z-score
 
 - test different z-score interval in same timeframe (e.g. 4h vs 1d in span of 2years)
