@@ -19,7 +19,7 @@ class BacktestUtils:
 
             # Entry logic
             if position is None:
-                if zscore <= -entry_threshold and BacktestUtils.is_good_entry(df, i):
+                if zscore <= -entry_threshold and BacktestUtils.is_good_entry(df, i, debug=True):
                     # LONG spread entry
                     # Spread = stock2 - beta * stock1 is below mean
                     # Stock 2 is undervalued relative to Stock 1
@@ -32,7 +32,7 @@ class BacktestUtils:
                         'stock2_price': df[stock2].iloc[i],
                         'hedge_ratio': df['Hedge_Ratio'].iloc[i]
                     }
-                elif zscore >= entry_threshold and BacktestUtils.is_good_entry(df, i): 
+                elif zscore >= entry_threshold and BacktestUtils.is_good_entry(df, i, debug=True): 
                     # SHORT spread entry
                     # Spread = stock2 - beta * stock1 is above mean
                     # Stock 2 is overvalued relative to Stock 1
@@ -122,15 +122,55 @@ class BacktestUtils:
     """ Filters """
 
     @staticmethod
-    def is_good_entry(df: pd.DataFrame, index: int) -> bool:
-        """ Entry filter logic that considers current half-life, hurst, ADF p-value """
+    def is_good_entry(df: pd.DataFrame, index: int, debug: bool = False) -> bool:
+        """
+        Entry filter logic that considers current half-life, hurst, ADF p-value.
+
+        Filters are applied progressively - each metric must pass to proceed.
+        Adjust thresholds based on your backtesting results.
+
+        Args:
+            df: DataFrame with metrics
+            index: Current index to check
+            debug: If True, print why entries are rejected
+        """
         half_life = df['Half_Life'].iloc[index]
         hurst = df['Hurst'].iloc[index]
         adf_p_value = df['ADF_PValue'].iloc[index]
 
-        if half_life < 30 and hurst < 0.5 and adf_p_value < 0.05:
-            return True
-        return False
+        # Check for NaN values - if any critical metric is NaN, reject entry
+        if pd.isna(half_life) or pd.isna(hurst) or pd.isna(adf_p_value):
+            if debug:
+                print(f"[{df.index[index]}] Rejected: NaN values (HL={half_life:.2f}, H={hurst:.3f}, ADF={adf_p_value:.3f})")
+            return False
+
+        # Filter 1: Half-life (should be reasonable for mean reversion)
+        # Too short (<10 days): might be noise
+        # Too long (>90 days): too slow to be profitable
+        if not (10 <= half_life <= 30):
+            if debug:
+                print(f"[{df.index[index]}] Rejected: Half-life out of range: {half_life:.2f} days")
+            return False
+
+        # Filter 2: Hurst exponent (< 0.5 indicates mean reversion)
+        # < 0.4: strong mean reversion
+        # 0.4-0.5: moderate mean reversion
+        # > 0.5: trending (avoid)
+        if hurst >= 0.5:
+            if debug:
+                print(f"[{df.index[index]}] Rejected: Hurst too high (trending): {hurst:.3f}")
+            return False
+
+        # # Filter 3: ADF p-value (< 0.05 is statistically significant stationarity)
+        # # Relaxed to 0.1 to allow more trades while still maintaining quality
+        # if adf_p_value >= 0.2:
+        #     if debug:
+        #         print(f"[{df.index[index]}] Rejected: ADF p-value too high: {adf_p_value:.3f}")
+        #     return False
+
+        if debug:
+            print(f"[{df.index[index]}] ✓ ACCEPTED: HL={half_life:.2f}, H={hurst:.3f}, ADF={adf_p_value:.3f}")
+        return True
 
     """ Compute various performance metrics from trades DataFrame """
     @staticmethod

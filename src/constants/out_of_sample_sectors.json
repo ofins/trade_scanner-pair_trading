@@ -1,0 +1,22 @@
+{
+  "Communication Services": [
+    "ATVI",
+    "EA",
+    "RBLX",
+    "ZM",
+    "TTWO",
+    "WIX",
+    "ROKU",
+    "SPOT"
+  ],
+  "Consumer": ["GM", "F", "YUMC", "ROST", "LULU", "NVR", "BKNG", "MAR"],
+  "Consumer Staples": ["BF.B", "MO", "TAP", "STZ", "KDP", "WW", "MKL", "MKC"],
+  "Energy": ["EQT", "HES", "OXY", "MRO", "PXD", "EOG", "DVN", "OKE"],
+  "Financials": ["AXP", "MSCI", "TROW", "ICE", "PNC", "CBOE", "MET", "PRU"],
+  "Healthcare": ["BIIB", "HOLX", "ZBH", "BCRX", "EXEL", "BSX", "WAT", "LH"],
+  "Industrials": ["BA", "LMT", "EMR", "CSX", "FDX", "ROK", "ODFL", "JCI"],
+  "Technology": ["SNPS", "ASML", "WDAY", "ZTS", "DDOG", "CRWD", "INTU", "NET"],
+  "Materials": ["CF", "MLM", "AVY", "PKG", "IFF", "CE", "EMN", "WRK"],
+  "Real Estate": ["EQIX", "WELL", "VICI", "AVB", "BXP", "DLR", "SBAC", "ESS"],
+  "Utilities": ["NRG", "PCG", "DUK", "SO", "XEL", "WEC", "PNW", "ED"]
+}
