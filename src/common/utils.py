@@ -80,8 +80,8 @@ class CommonUtils:
             elif period is not None:
                 download_params['period'] = period
             else:
-                # Default to 2y if nothing specified
-                download_params['period'] = '2y'
+                # Default to 1y if nothing specified
+                download_params['period'] = '1y'
 
             raw_data = yf.download(**download_params)
 
@@ -103,7 +103,7 @@ class CommonUtils:
             # Build and validate timeframe
             df = pd.DataFrame(data_dict).ffill().dropna()
 
-            min_required_points = 264 # ~1 year of trading days
+            min_required_points = 132 # ~1/2 year of trading days
 
             if len(df) < min_required_points:
                 print(f"    Insufficient data points: {len(df)} < {min_required_points}")
@@ -129,7 +129,7 @@ class CommonUtils:
             # Multiple tickers
             for ticker in tickers:
                 price_col = CommonUtils._get_ticker_price(raw_data, ticker)
-                if price_col is not None and len(price_col.dropna()) > 200: # at least ~200 data points
+                if price_col is not None and len(price_col.dropna()) > 126: 
                     data_dict[ticker] = price_col
         
         return data_dict

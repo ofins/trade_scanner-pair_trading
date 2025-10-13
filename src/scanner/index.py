@@ -13,12 +13,26 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from common.utils import CommonUtils
 from utils import PairScannerUtils
 
-class PairsScanner: 
-    def __init__(self, min_correlation: float = 0.7, zscore_window: int = 60, zscore_entry_threshold: float = 2.0):
+class PairsScanner:
+    def __init__(
+        self,
+        min_correlation: float = 0.7,
+        zscore_window: int = 60,
+        zscore_entry_threshold: float = 2.0,
+        max_coint_pvalue: float = 0.05,
+        strict_coint_pvalue: float = 0.02,  # Relaxed from 0.01
+        min_halflife: int = 5, 
+        max_halflife: int = 30, 
+        min_reversion_rate: float = 60.0  # Lowered from 75
+    ):
         self.min_correlation = min_correlation
         self.zscore_window = zscore_window
         self.zscore_entry_threshold = zscore_entry_threshold
-        self.max_pvalue = 0.05
+        self.max_pvalue = max_coint_pvalue
+        self.strict_coint_pvalue = strict_coint_pvalue
+        self.min_halflife = min_halflife
+        self.max_halflife = max_halflife
+        self.min_reversion_rate = min_reversion_rate
     
     def fetch_stocks_by_sector(self) -> dict[str, list[str]]:
         json_path = os.path.join(os.path.dirname(__file__), "../constants/stock_by_sectors.json")
@@ -101,16 +115,16 @@ class PairsScanner:
                     reversion_rate = spread_stats.get('reversion_rate')
 
                     # Quality filters for risk management and profitability
-                    # 1. Cointegration strength (already filtered at line 74, but double-check)
-                    if best_pvalue > 0.01:
+                    # 1. Cointegration strength - use configurable strict threshold
+                    if best_pvalue > self.strict_coint_pvalue:
                         continue
 
                     # 2. Spread stationarity - ADF test must be significant
                     if spread_adf_pvalue > 0.05:
                         continue
 
-                    # 3. Half-life: too fast = noise/transaction costs, too slow = capital inefficiency
-                    if half_life is None or half_life < 10 or half_life > 30:
+                    # 3. Half-life: configurable range for mean reversion speed
+                    if half_life is None or half_life < self.min_halflife or half_life > self.max_halflife:
                         continue
 
                     # 4. Hurst exponent: < 0.5 = mean reverting, closer to 0 = stronger reversion
@@ -118,18 +132,17 @@ class PairsScanner:
                         continue
 
                     # 5. Zero crossings: at least 15 crossings in 2 years (realistic)
-                    if zero_cross_count < 15:
+                    if zero_cross_count < 7:
                         continue
 
-                    # 6. Mean reversion success rate: require at least 50% historical success
-                    if reversion_rate is not None and reversion_rate < 75:
+                    # 6. Mean reversion success rate: configurable minimum threshold
+                    if reversion_rate is not None and reversion_rate < self.min_reversion_rate:
                         continue
 
                     # 7. Current z-score filter: avoid pairs at extremes (risk of breakdown)
                     current_zscore = spread_stats['current_zscore']
                     if abs(current_zscore) > 3.5:
                         continue
-
 
                     result = {
                             'Sector': sector_name,
@@ -160,7 +173,6 @@ class PairsScanner:
                     results.append(result)
             except Exception as e:
                 continue
-        print(f"  Tested {tested} pairs, found {len(results)} cointegrated pairs in sector {sector_name}.")
         return results
         
     def run_scanner(self, sectors: dict[str, list[str]]):
@@ -169,7 +181,7 @@ class PairsScanner:
         for sector, tickers in sectors.items():
             print(f"Scanning sector: {sector} with {len(tickers)} tickers")
 
-            data = CommonUtils.fetch_data(tickers, start="2021-01-01", end="2023-01-01", interval="1d")
+            data = CommonUtils.fetch_data(tickers, period="1y", interval="1d")
             print(f" Data fetched for {sector}, shape: {data.shape}")
 
             if data.empty or data.shape[1] < 2:

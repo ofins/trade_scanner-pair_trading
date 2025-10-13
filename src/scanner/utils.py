@@ -66,7 +66,7 @@ class PairScannerUtils:
     """ Formulas relevant to pairs trading """
 
     @staticmethod
-    def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float = 2.0, use_rolling_beta: bool = False, beta_lookback: int = 252) -> dict:
+    def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float = 2.0, use_rolling_beta: bool = False, beta_lookback: int = 378 ) -> dict:
         """
         Calculate comprehensive spread statistics for pairs trading.
 
@@ -76,7 +76,7 @@ class PairScannerUtils:
             zscore_window: Window size for z-score calculation (typically 60 days)
             zscore_entry_threshold: Threshold for entry signals
             use_rolling_beta: If True, use rolling beta. If False, use static beta from all data (recommended).
-            beta_lookback: Lookback period for beta calculation when use_rolling_beta=True (default 252 = 1 year)
+            beta_lookback: Lookback period for beta calculation when use_rolling_beta=True (default 126 days)
 
         Note: For most use cases, static beta (use_rolling_beta=False) is recommended as it provides
         a stable hedge ratio while the z-score window captures mean reversion signals.
