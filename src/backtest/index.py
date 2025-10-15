@@ -24,7 +24,7 @@ class BacktestPairTrading:
         file_path = os.path.join(project_root, "__reports__", today_folder, filename)
         
         pairs_df = CommonUtils.read_xlsx(file_path)
-        top_pairs = pairs_df.head(n).copy()
+        top_pairs = pairs_df.sample(n, random_state=42).copy()
 
         # Vectorized swap - no loop needed (only if Optimal_Direction column exists)
         if 'Optimal_Direction' in top_pairs.columns:

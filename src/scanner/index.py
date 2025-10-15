@@ -46,12 +46,21 @@ class PairsScanner:
         if data.empty or data.shape[1] < 2:
             print(f"⚠️ Not enough data to find cointegrated pairs in sector {sector_name}.")
             return []
-        
-        n = data.shape[1]
-        tickers = data.columns.tolist()
 
-        print(f" Calculating correlations for {sector_name}...")
-        corr_matrix = data.corr()
+        # Walk-forward approach: Use first year for training (in-sample)
+        # This prevents lookahead bias
+        split_point = len(data) // 2  # Split at midpoint (1 year each for 2y data)
+        training_data = data.iloc[:split_point].copy()
+
+        print(f" 📊 Using walk-forward split:")
+        print(f"    Training period: {training_data.index[0]} to {training_data.index[-1]} ({len(training_data)} days)")
+        print(f"    Total data: {data.index[0]} to {data.index[-1]} ({len(data)} days)")
+
+        n = training_data.shape[1]
+        tickers = training_data.columns.tolist()
+
+        print(f" Calculating correlations for {sector_name} (on training data only)...")
+        corr_matrix = training_data.corr()
 
         pairs_to_test: list[tuple[str, str]] = []
 
@@ -72,19 +81,19 @@ class PairsScanner:
 
         for ticker1, ticker2 in pairs_to_test:
             try:
-                # return only rows where both tickers have data
-                pair_data = data[[ticker1, ticker2]].dropna()
+                # Use ONLY training data for calculating cointegration and parameters
+                pair_training_data = training_data[[ticker1, ticker2]].dropna()
 
                 # Skip pairs with insufficient data
-                if len(pair_data) < 100:
+                if len(pair_training_data) < 100:
                     continue
 
-                # TEST DIRECTION 1: ticker1 -> ticker2
-                score1, pvalue1, _ = coint(pair_data[ticker1], pair_data[ticker2])
+                # TEST DIRECTION 1: ticker1 -> ticker2 (on training data only)
+                score1, pvalue1, _ = coint(pair_training_data[ticker1], pair_training_data[ticker2])
                 tested += 1
 
-                # TEST DIRECTION 2: ticker2 -> ticker1
-                score2, pvalue2, _ = coint(pair_data[ticker2], pair_data[ticker1])
+                # TEST DIRECTION 2: ticker2 -> ticker1 (on training data only)
+                score2, pvalue2, _ = coint(pair_training_data[ticker2], pair_training_data[ticker1])
                 tested += 1
 
                 if pvalue1 < self.max_pvalue or pvalue2 < self.max_pvalue:
@@ -103,8 +112,14 @@ class PairsScanner:
                         direction = 2
 
 
-                    spread_stats = PairScannerUtils.calculate_spread_stats(pair_data[stock_x], pair_data[stock_y], zscore_window=self.zscore_window, zscore_entry_threshold=self.zscore_entry_threshold)
-                    spread: pd.Series = pair_data[stock_y] - spread_stats['hedge_ratio'] * pair_data[stock_x]
+                    # Calculate spread statistics on TRAINING data only
+                    spread_stats = PairScannerUtils.calculate_spread_stats(
+                        pair_training_data[stock_x],
+                        pair_training_data[stock_y],
+                        zscore_window=self.zscore_window,
+                        zscore_entry_threshold=self.zscore_entry_threshold
+                    )
+                    spread: pd.Series = pair_training_data[stock_y] - spread_stats['hedge_ratio'] * pair_training_data[stock_x]
                     spread_adf_pvalue = PairScannerUtils.test_stationarity(spread)
 
                     # Count zero crossings of z-score (mean reversion), not raw spread
@@ -161,13 +176,15 @@ class PairsScanner:
                             'Spread_Mean': spread_stats['spread_mean'],
                             'Spread_Std': spread_stats['spread_std'],
                             'Current_ZScore': spread_stats['current_zscore'],
-                            'Stock1_Price': pair_data[stock_x].iloc[-1],
-                            'Stock2_Price': pair_data[stock_y].iloc[-1],
+                            'Stock1_Price': pair_training_data[stock_x].iloc[-1],
+                            'Stock2_Price': pair_training_data[stock_y].iloc[-1],
                             'ZScore_Mean': spread_stats['zscore_mean'],
                             'ZScore_Std': spread_stats['zscore_std'],
                             'ZScore_Min': spread_stats['zscore_min'],
                             'ZScore_Max': spread_stats['zscore_max'],
-                            'Reversion_Rate': spread_stats['reversion_rate']
+                            'Reversion_Rate': spread_stats['reversion_rate'],
+                            'Training_Start': training_data.index[0].strftime('%Y-%m-%d'),
+                            'Training_End': training_data.index[-1].strftime('%Y-%m-%d')
                         }
                     
                     results.append(result)
@@ -181,7 +198,7 @@ class PairsScanner:
         for sector, tickers in sectors.items():
             print(f"Scanning sector: {sector} with {len(tickers)} tickers")
 
-            data = CommonUtils.fetch_data(tickers, period="1y", interval="1d")
+            data = CommonUtils.fetch_data(tickers, period="2y", interval="1d")
             print(f" Data fetched for {sector}, shape: {data.shape}")
 
             if data.empty or data.shape[1] < 2:
