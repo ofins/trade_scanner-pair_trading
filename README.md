@@ -1,5 +1,32 @@
 # Pair Trading Strategy Analysis
 
+## Demo Usage
+
+First, we start by running scanner. For this Demo, I am scanning for potential pairs in Tech sector of S&P 500.
+
+![running scanner](./media/image.png)
+
+Here are the list of potential pairs generated. The lower `coint_pvalue` is, the more "cointegrated" the stocks are.
+
+![scanner results in xlsx](./media/image-1.png)
+
+Now I will run a 2 year backtest for a sample pair, CDW-AMD.
+
+![running a single sample pair](./media/image-2.png)
+
+Below is one visual representation of how a backtest looks like for `CDW-AMD` pair.
+
+![cdw-amd result](./media/image-3.png)
+
+Now I will run backtest for all the pairs listed in the scanner.
+
+![running backtest](./media/image-4.png)
+
+![backtest results xlsx](./media/image-5.png)
+
+_There are several limitations to this backtest._
+_It does not properly address scanning for potential pairs on a daily basis during backtest._
+
 ## Overview
 
 This project implements and analyzes a **pair trading strategy** to identify potential arbitrage opportunities in financial markets. Pair trading is a market-neutral trading strategy that involves taking simultaneous long and short positions in two highly correlated securities when their price relationship deviates from the historical norm.
