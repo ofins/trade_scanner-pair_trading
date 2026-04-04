@@ -1,4 +1,5 @@
-.claude/
+.claude/settings.local.json
+CLAUDE.local.md
 /venv/
 /__reports__/
 *__pycache__/
