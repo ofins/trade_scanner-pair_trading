@@ -76,3 +76,7 @@ y=α+βx+ϵ
 You then test whether the residual (ε) — the spread between the two — is stationary.
 
 If the spread is stationary, it means the two stocks move together long-term and the spread mean-reverts — perfect for trading.
+
+### Notes
+
+- The goal of this scanner is to find pairs of stocks that are great candidates for setting up pairs trading. The output should rank them based on most cointegrated pair to least.

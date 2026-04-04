@@ -4,8 +4,6 @@
 
 Statistical arbitrage system that identifies cointegrated stock pairs within S&P 500 sectors and backtests mean-reversion trading strategies.
 
-**Conclusion on file**: The strategy does not reliably beat the market after transaction costs. This repo is primarily for research and education.
-
 ## Architecture
 
 ```
@@ -20,11 +18,11 @@ Reports output to `__reports__/` (gitignored).
 
 ## Key Entry Points
 
-| Script | Purpose |
-|--------|---------|
-| `src/scanner/index.py` | Run full sector scan → outputs Excel with candidate pairs |
-| `src/backtest/index.py` | Batch backtest all pairs from scanner output |
-| `src/backtest/single_pair.py` | Interactive single-pair backtest with charts |
+| Script                        | Purpose                                                   |
+| ----------------------------- | --------------------------------------------------------- |
+| `src/scanner/index.py`        | Run full sector scan → outputs Excel with candidate pairs |
+| `src/backtest/index.py`       | Batch backtest all pairs from scanner output              |
+| `src/backtest/single_pair.py` | Interactive single-pair backtest with charts              |
 
 ## Domain Rules
 
@@ -36,16 +34,16 @@ Reports output to `__reports__/` (gitignored).
 
 ## Filter Thresholds (current config)
 
-| Filter | Threshold |
-|--------|-----------|
-| Correlation | ≥ 0.7 |
-| Cointegration p-value | < 0.02 |
-| ADF p-value on spread | < 0.05 |
-| Half-life | 5–30 days |
-| Hurst exponent | < 0.5 |
-| Zero-crossings (2yr) | ≥ 7 |
-| Mean reversion success rate | ≥ 60% |
-| Current z-score | within [−3.5, +3.5] |
+| Filter                      | Threshold           |
+| --------------------------- | ------------------- |
+| Correlation                 | ≥ 0.7               |
+| Cointegration p-value       | < 0.02              |
+| ADF p-value on spread       | < 0.05              |
+| Half-life                   | 5–30 days           |
+| Hurst exponent              | < 0.5               |
+| Zero-crossings (2yr)        | ≥ 7                 |
+| Mean reversion success rate | ≥ 60%               |
+| Current z-score             | within [−3.5, +3.5] |
 
 ## Dependencies
 

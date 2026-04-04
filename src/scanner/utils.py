@@ -223,7 +223,7 @@ class PairScannerUtils:
             delta_spread = delta_spread[valid_idx]
 
             if len(lagged_spread) > 10:
-                X_hl = lagged_spread.values.reshape(-1, 1)
+                X_hl = np.column_stack([lagged_spread.values, np.ones(len(lagged_spread))])
                 y_hl = delta_spread.values
                 theta = np.linalg.lstsq(X_hl, y_hl, rcond=None)[0][0]
                 halflife = -np.log(2) / theta if theta < 0 else None

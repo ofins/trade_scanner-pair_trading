@@ -7,6 +7,7 @@ import sys
 import gc
 import time
 from statsmodels.tsa.stattools import coint, adfuller
+from statsmodels.stats.multitest import multipletests
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -60,7 +61,8 @@ class PairsScanner:
         tickers = training_data.columns.tolist()
 
         print(f" Calculating correlations for {sector_name} (on training data only)...")
-        corr_matrix = training_data.corr()
+        log_returns = np.log(training_data / training_data.shift(1)).iloc[1:]
+        corr_matrix = log_returns.corr()
 
         pairs_to_test: list[tuple[str, str]] = []
 
@@ -111,6 +113,9 @@ class PairsScanner:
                         best_score = score2
                         direction = 2
 
+                    # 1. Cointegration strength - early exit before expensive computation
+                    if best_pvalue > self.strict_coint_pvalue:
+                        continue
 
                     # Calculate spread statistics on TRAINING data only
                     spread_stats = PairScannerUtils.calculate_spread_stats(
@@ -119,21 +124,16 @@ class PairsScanner:
                         zscore_window=self.zscore_window,
                         zscore_entry_threshold=self.zscore_entry_threshold
                     )
-                    spread: pd.Series = pair_training_data[stock_y] - spread_stats['hedge_ratio'] * pair_training_data[stock_x]
-                    spread_adf_pvalue = PairScannerUtils.test_stationarity(spread)
+                    spread_adf_pvalue = PairScannerUtils.test_stationarity(spread_stats['spread_series'])
 
                     # Count zero crossings of z-score (mean reversion), not raw spread
                     rolling_zscore = spread_stats['rolling_zscore_series']
                     zero_cross_count = ((rolling_zscore.shift(1) * rolling_zscore) < 0).sum()
                     half_life = spread_stats['halflife']
-                    hurst = PairScannerUtils.calculate_hurst_exponent(spread)
+                    hurst = PairScannerUtils.calculate_hurst_exponent(spread_stats['spread_series'])
                     reversion_rate = spread_stats.get('reversion_rate')
 
-                    # Quality filters for risk management and profitability
-                    # 1. Cointegration strength - use configurable strict threshold
-                    if best_pvalue > self.strict_coint_pvalue:
-                        continue
-
+                    # Quality filters
                     # 2. Spread stationarity - ADF test must be significant
                     if spread_adf_pvalue > 0.05:
                         continue
@@ -146,12 +146,12 @@ class PairsScanner:
                     if hurst >= 0.5:
                         continue
 
-                    # 5. Zero crossings: at least 15 crossings in 2 years (realistic)
+                    # 5. Zero crossings: at least 7 crossings in the training period (~6 months)
                     if zero_cross_count < 7:
                         continue
 
                     # 6. Mean reversion success rate: configurable minimum threshold
-                    if reversion_rate is not None and reversion_rate < self.min_reversion_rate:
+                    if reversion_rate is None or reversion_rate < self.min_reversion_rate:
                         continue
 
                     # 7. Current z-score filter: avoid pairs at extremes (risk of breakdown)
@@ -190,6 +190,14 @@ class PairsScanner:
                     results.append(result)
             except Exception as e:
                 continue
+
+        # Apply Benjamini-Hochberg FDR correction across all cointegration p-values
+        # Removes false discoveries expected by chance when testing many pairs
+        if results:
+            pvalues = [r['Coint_PValue'] for r in results]
+            reject, _, _, _ = multipletests(pvalues, alpha=0.05, method='fdr_bh')
+            results = [r for r, keep in zip(results, reject) if keep]
+
         return results
         
     def run_scanner(self, sectors: dict[str, list[str]]):
@@ -219,8 +227,9 @@ class PairsScanner:
             # Small delay to allow file handles to close
             time.sleep(0.5)
 
+        all_results.sort(key=lambda r: r['Coint_PValue'])
         return all_results
-        
+
     def main(self):
         sectors = self.fetch_stocks_by_sector()
         results = self.run_scanner(sectors)
