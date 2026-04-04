@@ -1,157 +1,127 @@
+# Backtest — Design & Conventions
+
 ## Overview
 
-### Performance and efficiency metrics overview
-
-Cumulative return: The total percentage gain or loss over the backtesting period.
-
-Compound Annual Growth Rate (CAGR): The geometric mean of the annual returns, which shows the smoothed, average growth rate per year.
-
-Win rate: The percentage of trades that are profitable. This metric is most useful when analyzed alongside the average win/loss ratio, since a low win rate can still be profitable with sufficiently large winning trades.
-Profit factor: The ratio of the gross profits to the gross losses. A value above 1 indicates a profitable strategy.
-
-Average trade: The typical amount of profit or loss per trade. This can be analyzed in conjunction with the expectancy, which measures the average expected profit per dollar risked.
-
-Equity curve: A visual plot of the cumulative profit and loss over time. A smoothly rising curve indicates a healthy and consistent strategy.
+The backtest simulates a dollar-neutral pairs trading strategy on cointegrated pairs identified by the scanner.
+All metrics are computed after transaction costs and use walk-forward beta estimation to prevent lookahead bias.
 
 ---
 
-Maximum Drawdown (MDD): The largest peak-to-trough decline in your portfolio's value during the backtest. This represents the worst-case loss and a key test of psychological tolerance.
+## Architecture
 
-Annualized volatility: The standard deviation of the strategy's returns. It measures the fluctuation of returns and helps quantify the strategy's risk.
-
-Stress and regime testing: A backtest should include a variety of market conditions, including bull and bear markets, to confirm the strategy is robust and adaptable.
-
-Beta: Measures your strategy's sensitivity to overall market movements. A low beta suggests lower sensitivity to market fluctuations, which can be useful for creating diversified portfolios.
+| File | Role |
+|------|------|
+| `index.py` | Batch runner — reads scanner Excel, runs `SinglePairBacktest` for each pair |
+| `single_pair.py` | Per-pair orchestration — data fetch, walk-forward split, trade simulation, results |
+| `utils.py` | `BacktestUtils` — simulation engine, daily return builder, all performance metrics |
 
 ---
 
-Sharpe ratio: The most widely used metric for comparing risk-adjusted returns. It measures the excess return (above the risk-free rate) per unit of total risk (standard deviation).
-Interpretation: A higher Sharpe ratio is better. Ratios above 1 are generally considered good, above 2 are very good, and above 3 are excellent.
+## Walk-Forward Beta Estimation
 
-Sortino ratio: Similar to the Sharpe ratio, but it focuses only on downside volatility, or the standard deviation of negative returns. This metric is useful if you are more concerned with limiting losses than with overall volatility.
+The hedge ratio (beta) is estimated using OLS on the **first 50% of the data only** (training window).
+It is then applied as a fixed constant to the full backtest period.
 
-Calmar ratio: Compares the strategy's Compound Annual Growth Rate (CAGR) to its Maximum Drawdown (MDD), giving a clear picture of return relative to the worst-case loss.
+This matches the scanner's walk-forward split and eliminates the most impactful form of lookahead bias:
+using a beta computed from future data to construct past spread/z-score signals.
 
-### Sharpe ratio
+```
+Total data:  |<------- training (50%) ------->|<------- backtest (50%) ------->|
+Beta fitted:  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Beta applied: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
 
-Sharpe ratio by itself is not a reliable indicator as it only assumes Sharpe ratio up to this point, and does not reliable indicate if it would stay this way.
+The spread is: `Y - beta * X - intercept`
+The z-score is: rolling 60-day normalisation of the spread (backward-looking, no lookahead).
 
-Instead, measure **rolling sharpe ratio**, which looks for pairs whose sharpe ratio stays positive and consistent and not necessarily the highest.
+---
 
-### calculate_reversion_quality
+## Trade Logic
 
-### check_liquidity
+**Entry** (one position at a time):
+- LONG spread when z-score ≤ −2.0 and `is_good_entry` filters pass
+- SHORT spread when z-score ≥ +2.0 and `is_good_entry` filters pass
 
-### calculate_correlation_stability
+**Exit**:
+- Mean reversion: z-score crosses 0
+- Stop loss: z-score exceeds **fixed absolute** threshold of ±3.5 (LONG exits at z < −3.5, SHORT at z > +3.5)
 
-### calculate_volatility_regime
+The stop loss is **absolute** (not relative to entry z-score). This ensures pairs entering at more extreme z-scores receive the same protection as less extreme entries.
 
-## Backtesting
+**Entry filters** (`is_good_entry`):
+- Rolling half-life: 5–30 days
+- Rolling Hurst exponent: < 0.5
+- Rolling ADF p-value on spread: < 0.05
 
-### Initial tests
+---
 
-#### Consider live-metrics at each entry
+## Transaction Costs
 
-Initial tests are done looking for specific metrics when scanning stocks then backtesting each pair 2-5y. However, this does not take into consideration of these _metrics_ during entry of each trade, where these metrics may fluctuate.
+Each trade includes transaction costs of **0.1% per side** (2 sides on entry + 2 sides on exit = 0.2% of capital per round-trip).
 
-**Hypothesis**
-Taking these metrics into consideration may result in better performance.
+```python
+transaction_cost = total_capital_deployed * 0.001 * 2
+```
 
-**Observation**
-Adding more restriction actually results in poorer results.
-This is likely due to filters being _too restrcitive_ which is filtering out many good opportunities. This makes trade pool too small and leads to bigger variance.
+This approximates realistic brokerage commissions + bid-ask spread. Results without costs would be higher;
+the gap represents the friction that erodes the strategy's edge in practice.
 
-#### Control
+---
 
-**SAMPLE A (SP500, 40 pairs)**
+## Position Sizing
 
-**SAMPLE B (Random, 13 pairs)**
-Avg/trade = 69; avg mdd = 166; avg mdd% = 6.64; winrate = 74%
+```
+hedge_ratio = abs(beta)
+stock1_allocation = capital / (1 + hedge_ratio)
+stock2_allocation = capital - stock1_allocation
 
-#### Only adjust half-life metrics
+stock1_shares = stock1_allocation / entry_price1
+stock2_shares = stock2_allocation / entry_price2
+```
 
-**SAMPLE A (SP500)**
+Capital is **fixed** (not compounded). Each trade is sized as if starting capital is always the initial amount.
+CAGR and annualized return describe what a fixed-notional account would produce.
 
-10 <= hl <= 90 : Avg/trade = 65; avg mdd = 110; avg mdd% = 4.4; winrate = 75%
+---
 
-10 <= hl <= 30 : Avg/trade = 64; avg mdd = 97; avg mdd% = 3.9; winrate = 75%
+## Performance Metrics
 
-2 <= hl <= 20 : Avg/trade = 86; avg mdd = 101; avg mdd% = 4.1; winrate = 76%
+### Daily Return Series
 
-2 <= hl <= 10 : Avg/trade = 82; avg mdd = 61; avg mdd% = 2.4; winrate = 77%
+All risk-adjusted metrics (Sharpe, Sortino, Volatility) are computed on a **daily fractional return series**
+built from the trade log and price data — not on a per-trade P&L series.
 
-2 <= hl <= 5 : Avg/trade = 90; avg mdd = 18; avg mdd% = 0.7; winrate = 70%
+`build_daily_returns` assigns each calendar day within a trade's holding period its actual P&L from price
+changes, divided by capital. Days outside any trade have 0 return. This gives proper daily resolution
+for annualisation and accounts for intra-trade drawdown.
 
-0 <= hl <= 3 : too restrictive for most trades.
+### Metrics Reference
 
-0 <= hl <= 2 : unable to take trades.
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| Sharpe | `(mean(r - rf_daily) / std(r - rf_daily)) × √252` | r = daily returns; rf = 2%/252 |
+| Sortino | `(mean(r - rf_daily) / semi_dev) × √252` | semi_dev = √mean(min(r−target, 0)²) |
+| Volatility | `std(daily_returns) × √252` | annualised fractional vol |
+| Max Drawdown % | `max_drawdown_$ / peak_equity × 100` | peak = highest equity reached, not initial capital |
+| Calmar | `CAGR% / max_drawdown%` | |
+| CAGR | `(final_equity / initial_capital)^(1/years) − 1` | final_equity = initial + total PnL |
+| Win Rate | winning trades / total trades | |
+| Profit Factor | gross profit / gross loss | |
 
-**SAMPLE B (Random, 13 pairs)**
+### `Can Trade` Field
 
-10 <= hl <= 30 : Avg/trade = 74; avg mdd = 73; avg mdd% = 2.93; winrate = 80%
+Reports `YES` only if:
+1. Current z-score ≥ entry threshold, AND
+2. All `is_good_entry` rolling filters pass at the last bar (half-life, Hurst, ADF)
 
-2 <= hl <= 20 : Avg/trade = 72; avg mdd = 163; avg mdd% = 6.55; winrate = 75%
+A `YES` result means the pair is currently signalling a tradeable entry under all active filters.
 
-2 <= hl <= 5 : Avg/trade = 68; avg mdd = 1; avg mdd% = 0.3; winrate = 64%
+---
 
-#### Only adjust Hurst Exponential metrics
+## Known Limitations
 
-**SAMPLE A (SP500)**
-
-hurst < 50: Avg/trade = 71; avg mdd = 145; avg mdd% = 5.83; winrate = 75%
-
-hurst < 30: Avg/trade = 77; avg mdd = 65; avg mdd% = 2.61; winrate = 77%
-
-hurst < 20: Avg/trade = 75; avg mdd = 33; avg mdd% = 1.34; winrate = 71%
-
-#### Only adjust ADP P-value
-
-**SAMPLE A (SP500)**
-
-ADP < 0.2: Avg/trade = 50; avg mdd = 0; avg mdd% = 3.63; winrate = 70%
-
-ADP < 0.1: Avg/trade = 48; avg mdd = 70; avg mdd% = 2.8; winrate = 68%
-
-#### Halflife + Hurst
-
-**SAMPLE A (SP500)**
-
-half-life (2-5), Hurst < 0.5
-Avg/trade = 86; avg mdd = 13; avg mdd% = 0.55; winrate = 70%
-
-half-life (2-10), Hurst < 0.5
-Avg/trade = 81; avg mdd = 49; avg mdd% = 1.98; winrate = 77%
-
-half-life (2-20), Hurst < 0.5
-Avg/trade = 86; avg mdd = 101; avg mdd% = 4.06; winrate = 76%
-
-half-life (2-20), Hurst < 0.3
-Avg/trade = 79; avg mdd = 45; avg mdd% = 1.82; winrate = 78%
-
-**SAMPLE B (Random, 13 pairs)**
-
-half-life (10-30), Hurst < 0.3
-Avg/trade = 54; avg mdd = 45; avg mdd% = 1.79; winrate = 80%
-
-half-life (10-30), Hurst < 053
-Avg/trade = 73; avg mdd = 75; avg mdd% = 3.03; winrate = 79%
-
-### Rolling window co-integration backtest
-
-- we should be scanning once every week/month for backtest instead of using same set to backtest everything.
-
-### Z-score
-
-- test different z-score interval in same timeframe (e.g. 4h vs 1d in span of 2years)
-
-### Dynamic position sizing
-
-Use Relaxed Filters as Position Sizing
-
-Instead of rejecting trades, adjust position size:
-
-def calculate*position_size(base_capital, metrics):
-score = 1.0
-if metrics['hurst'] < 0.45: score *= 1.2 # Boost strong mean reversion
-if metrics['half_life'] > 60: score \_= 0.8 # Reduce slow pairs
-return base_capital \* score
+- **Fixed capital**: No compounding. CAGR assumes reinvestment but trade sizing does not adjust.
+- **No slippage model**: Transaction costs are flat %. Market impact is not modelled.
+- **Static beta**: Beta is fixed from training window. Structural breaks after the split point are not detected.
+- **Daily bars**: Intra-day slippage and gap risk are not captured.
+- **No short-selling cost**: Borrow fees for the short leg are not modelled.

@@ -1,10 +1,11 @@
 
+import numpy as np
 import pandas as pd
 
 
 class BacktestUtils:
     @staticmethod
-    def backtest_pair(df: pd.DataFrame, stock1:str, stock2:str, zscore_window:int, entry_threshold:float, capital: float)-> pd.DataFrame:
+    def backtest_pair(df: pd.DataFrame, stock1:str, stock2:str, zscore_window:int, entry_threshold:float, capital: float, transaction_cost_pct: float = 0.001, stop_loss_zscore: float = 3.5)-> pd.DataFrame:
         """ Backtest a single pair trading strategy on two stocks with given parameters """
         trades = []
         position: dict = None 
@@ -57,13 +58,11 @@ class BacktestUtils:
                     exit_signal = True
                     exit_reason = 'Mean Reversion'
 
-                # Stop loss: exit if z-score moves 1.5 units further away from mean
-                # For LONG: entry is negative (e.g., -2.5), stop at -4.0 (entry - 1.5)
-                # For SHORT: entry is positive (e.g., +2.5), stop at +4.0 (entry + 1.5)
-                elif position['type'] == 'LONG' and zscore < (position['entry_zscore'] - 1.5):
+                # Stop loss: fixed absolute z-score level, same regardless of entry point
+                elif position['type'] == 'LONG' and zscore < -stop_loss_zscore:
                     exit_signal = True
                     exit_reason = 'Stop Loss'
-                elif position['type'] == 'SHORT' and zscore > (position['entry_zscore'] + 1.5):
+                elif position['type'] == 'SHORT' and zscore > stop_loss_zscore:
                     exit_signal = True
                     exit_reason = 'Stop Loss'
 
@@ -89,7 +88,8 @@ class BacktestUtils:
                         stock1_pnl = stock1_shares * (exit_stock1_price - position['stock1_price'])
                         stock2_pnl = stock2_shares * (position['stock2_price'] - exit_stock2_price)
 
-                    total_pnl = stock1_pnl + stock2_pnl
+                    transaction_cost = (stock1_allocation + stock2_allocation) * transaction_cost_pct * 2
+                    total_pnl = stock1_pnl + stock2_pnl - transaction_cost
                     pnl_percent = (total_pnl / capital) * 100
 
                     trades.append({
@@ -112,6 +112,7 @@ class BacktestUtils:
                         'Hedge Ratio': hedge_ratio,
                         'Stock1 Shares': stock1_shares,
                         'Stock2 Shares': stock2_shares,
+                        'Transaction_Cost': transaction_cost,
                         'PnL ($)': total_pnl,
                         'PnL (%)': pnl_percent,
                         'Exit Reason': exit_reason
@@ -120,7 +121,41 @@ class BacktestUtils:
                     position = None  # Reset position
         
         return pd.DataFrame(trades)
-    
+
+    @staticmethod
+    def build_daily_returns(df: pd.DataFrame, trades_df: pd.DataFrame, stock1: str, stock2: str, capital: float) -> pd.Series:
+        """
+        Build a daily fractional return series from completed trades and price data.
+
+        For each day strictly after a trade's entry date up to and including exit date,
+        computes the daily P&L from price moves using the trade's share counts, then
+        divides by capital to produce a fractional return. Overlapping trades are summed.
+
+        LONG  (buy stock2, sell stock1): pnl = shares2 * Δprice2 - shares1 * Δprice1
+        SHORT (sell stock2, buy stock1): pnl = shares1 * Δprice1 - shares2 * Δprice2
+        """
+        if trades_df.empty:
+            return pd.Series(0.0, index=df.index)
+
+        price1_diff = df[stock1].diff()
+        price2_diff = df[stock2].diff()
+        daily_pnl = pd.Series(0.0, index=df.index)
+
+        for _, trade in trades_df.iterrows():
+            mask = (df.index > trade['Entry Date']) & (df.index <= trade['Exit Date'])
+            trade_dates = df.index[mask]
+            if len(trade_dates) == 0:
+                continue
+            shares1 = trade['Stock1_Shares']
+            shares2 = trade['Stock2_Shares']
+            if trade['Position'] == 'LONG':
+                pnl = shares2 * price2_diff.loc[trade_dates] - shares1 * price1_diff.loc[trade_dates]
+            else:
+                pnl = shares1 * price1_diff.loc[trade_dates] - shares2 * price2_diff.loc[trade_dates]
+            daily_pnl.loc[trade_dates] += pnl
+
+        return daily_pnl / capital
+
     """ Filters """
 
     @staticmethod
@@ -235,8 +270,9 @@ class BacktestUtils:
         # Maximum drawdown in dollars
         max_drawdown_dollars = drawdown.max() if not pd.isna(drawdown.max()) else 0.0
 
-        # Calculate percentage drawdown relative to INITIAL CAPITAL (not peak)
-        max_drawdown_pct = (max_drawdown_dollars / initial_capital) * 100 if initial_capital > 0 else 0.0
+        # Calculate percentage drawdown relative to PEAK equity
+        peak_equity = running_max.max()
+        max_drawdown_pct = (max_drawdown_dollars / peak_equity) * 100 if peak_equity > 0 else 0.0
 
         return max_drawdown_dollars, max_drawdown_pct
 
@@ -285,45 +321,44 @@ class BacktestUtils:
         return cagr * 100  # Return as percentage
     
     @staticmethod
-    def calculate_sharpe_ratio(pnl_series: pd.Series, risk_free_rate: float = 0.02) -> float:
+    def calculate_sharpe_ratio(daily_returns: pd.Series, risk_free_rate: float = 0.02) -> float:
         """
-        Calculate Sharpe ratio from P&L series
-        
+        Calculate annualized Sharpe ratio from a daily fractional return series.
+
         Args:
-            pnl_series: Series of P&L values from individual trades
+            daily_returns: Series of daily fractional returns from build_daily_returns
             risk_free_rate: Annual risk-free rate (default 2%)
-        
+
         Returns:
-            Sharpe ratio
+            Annualized Sharpe ratio
         """
-        if pnl_series.empty or pnl_series.std() == 0:
+        if daily_returns.empty or daily_returns.std() == 0:
             return 0.0
-        
-        # Convert to daily returns (assuming trades are roughly daily frequency)
-        daily_rf_rate = risk_free_rate / 252  # 252 trading days per year
-        excess_returns = pnl_series - daily_rf_rate
-        
-        return excess_returns.mean() / pnl_series.std() if pnl_series.std() > 0 else 0.0
+
+        daily_rf = risk_free_rate / 252
+        excess = daily_returns - daily_rf
+
+        return (excess.mean() / excess.std()) * np.sqrt(252) if excess.std() > 0 else 0.0
     
     @staticmethod
-    def calculate_volatility(pnl_series: pd.Series, annualized: bool = True) -> float:
+    def calculate_volatility(daily_returns: pd.Series, annualized: bool = True) -> float:
         """
-        Calculate volatility of P&L series
-        
+        Calculate volatility from a daily fractional return series.
+
         Args:
-            pnl_series: Series of P&L values
-            annualized: Whether to annualize the volatility
-        
+            daily_returns: Series of daily fractional returns from build_daily_returns
+            annualized: Whether to annualize (default True, multiplies by sqrt(252))
+
         Returns:
-            Volatility (standard deviation)
+            Volatility as a fractional value (e.g. 0.15 = 15% annualised)
         """
-        if pnl_series.empty:
+        if daily_returns.empty:
             return 0.0
-        
-        volatility = pnl_series.std()
+
+        volatility = daily_returns.std()
         if annualized:
-            volatility *= (252 ** 0.5)  # Annualize assuming 252 trading days
-        
+            volatility *= np.sqrt(252)
+
         return volatility
     
     @staticmethod
@@ -448,28 +483,28 @@ class BacktestUtils:
         return annualized_return / max_drawdown_pct
     
     @staticmethod
-    def calculate_sortino_ratio(pnl_series: pd.Series, risk_free_rate: float = 0.02) -> float:
+    def calculate_sortino_ratio(daily_returns: pd.Series, risk_free_rate: float = 0.02, target: float = 0.0) -> float:
         """
-        Calculate Sortino ratio (uses downside deviation instead of total volatility)
-        
+        Calculate annualized Sortino ratio using proper semi-deviation.
+
         Args:
-            pnl_series: Series of P&L values
-            risk_free_rate: Annual risk-free rate
-        
+            daily_returns: Series of daily fractional returns from build_daily_returns
+            risk_free_rate: Annual risk-free rate (default 2%)
+            target: Minimum acceptable daily return (default 0.0)
+
         Returns:
-            Sortino ratio
+            Annualized Sortino ratio
         """
-        if pnl_series.empty:
+        if daily_returns.empty:
             return 0.0
-        
-        daily_rf_rate = risk_free_rate / 252
-        excess_returns = pnl_series - daily_rf_rate
-        
-        # Calculate downside deviation (only negative returns)
-        downside_returns = excess_returns[excess_returns < 0]
-        if len(downside_returns) == 0:
-            return float('inf') if excess_returns.mean() > 0 else 0.0
-        
-        downside_deviation = downside_returns.std()
-        
-        return excess_returns.mean() / downside_deviation if downside_deviation > 0 else 0.0
+
+        daily_rf = risk_free_rate / 252
+        excess = daily_returns - daily_rf
+
+        downside = np.minimum(daily_returns - target, 0)
+        semi_dev = np.sqrt(np.mean(downside ** 2))
+
+        if semi_dev == 0:
+            return float('inf') if excess.mean() > 0 else 0.0
+
+        return (excess.mean() / semi_dev) * np.sqrt(252)

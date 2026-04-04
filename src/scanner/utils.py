@@ -66,7 +66,7 @@ class PairScannerUtils:
     """ Formulas relevant to pairs trading """
 
     @staticmethod
-    def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float = 2.0, use_rolling_beta: bool = False, beta_lookback: int = 126) -> dict:
+    def calculate_spread_stats(stock_x: pd.Series, stock_y: pd.Series, zscore_window: int, zscore_entry_threshold: float = 2.0, use_rolling_beta: bool = False, beta_lookback: int = 126, fixed_beta: float = None, fixed_intercept: float = None) -> dict:
         """
         Calculate comprehensive spread statistics for pairs trading.
 
@@ -104,11 +104,15 @@ class PairScannerUtils:
                 # Use the most recent beta as the "current" hedge ratio
                 beta = rolling_beta_series.iloc[-1]
             else:
-                # Static beta calculated from all data (RECOMMENDED - default behavior)
-                X = stock_x.values.reshape(-1, 1)
-                y = stock_y.values
-                X = np.column_stack([X, np.ones(len(X))])
-                beta, intercept = np.linalg.lstsq(X, y, rcond=None)[0]
+                # Static beta: use pre-fitted values if provided (avoids lookahead in backtest)
+                if fixed_beta is not None:
+                    beta = fixed_beta
+                    intercept = fixed_intercept if fixed_intercept is not None else 0.0
+                else:
+                    X = stock_x.values.reshape(-1, 1)
+                    y = stock_y.values
+                    X = np.column_stack([X, np.ones(len(X))])
+                    beta, intercept = np.linalg.lstsq(X, y, rcond=None)[0]
 
                 # Calculate spread using static beta
                 spread = stock_y - beta * stock_x - intercept
@@ -171,6 +175,7 @@ class PairScannerUtils:
 
             return {
                 'hedge_ratio': beta,
+                'intercept': intercept,
                 'spread': spread,
                 'spread_mean': spread.mean(),
                 'spread_std': spread.std(),
@@ -192,6 +197,7 @@ class PairScannerUtils:
             print(f"Error processing pair {stock_x}-{stock_y}: {e}")
             return {
                 'hedge_ratio': 1.0,
+                'intercept': 0.0,
                 'spread': pd.Series(dtype=float),
                 'spread_mean': 0,
                 'spread_std': 1,

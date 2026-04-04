@@ -23,19 +23,36 @@ class SinglePairBacktest:
 
     def run_test(self) -> dict:
         df = CommonUtils.fetch_data([self.ticker1, self.ticker2], period=self.period, interval="1d")
-        if df is None:
+        if df is None or df.empty:
             return
-        
-        stats = PairScannerUtils.calculate_spread_stats(
-            df[self.ticker1],
-            df[self.ticker2],
+
+        # Walk-forward split: fit hedge ratio on first 50% of data only to avoid lookahead bias
+        split_idx = len(df) // 2
+        train_df = df.iloc[:split_idx]
+
+        train_stats = PairScannerUtils.calculate_spread_stats(
+            train_df[self.ticker1],
+            train_df[self.ticker2],
             zscore_window=self.zscore_window,
             zscore_entry_threshold=self.entry_threshold
         )
 
+        beta = train_stats.get('hedge_ratio', 1.0)
+        intercept = train_stats.get('intercept', 0.0)
+
+        # Apply fixed beta/intercept from training window to full dataset
+        stats = PairScannerUtils.calculate_spread_stats(
+            df[self.ticker1],
+            df[self.ticker2],
+            zscore_window=self.zscore_window,
+            zscore_entry_threshold=self.entry_threshold,
+            fixed_beta=beta,
+            fixed_intercept=intercept
+        )
+
         df['Spread'] = stats.get('spread_series', pd.Series(dtype=float))
         df['ZScore'] = stats.get('rolling_zscore_series', pd.Series(dtype=float))
-        df['Hedge_Ratio'] = stats.get('hedge_ratio', 1.0)
+        df['Hedge_Ratio'] = beta
 
         df['Hurst'] = stats.get('hurst', pd.Series(dtype=float))
         df['Half_Life'] = stats.get('halflife_series', pd.Series(dtype=float))
@@ -44,7 +61,7 @@ class SinglePairBacktest:
         if not stats:
             print("No stats calculated.")
             return
-        
+
         print(stats)
 
         trades_df = BacktestUtils.backtest_pair(
@@ -245,21 +262,27 @@ class SinglePairBacktest:
     def generate_results(self, df: pd.DataFrame, trades_df: pd.DataFrame) -> dict:
         """ Generate results that can be used by other modules to produce multi pair reports."""
 
-        max_drawdown, max_drawdown_pct = BacktestUtils.calculate_max_drawdown(trades_df['PnL ($)'], self.capital) if not trades_df.empty else (0, 0)
+        daily_returns = BacktestUtils.build_daily_returns(df, trades_df, self.ticker1, self.ticker2, self.capital) if not trades_df.empty else pd.Series(0.0, index=df.index)
+
+        max_drawdown, max_drawdown_pct = BacktestUtils.calculate_max_drawdown(daily_returns * self.capital, self.capital) if not trades_df.empty else (0, 0)
         annualized_return = BacktestUtils.calculate_annualized_return(trades_df['PnL ($)'].sum(), self.capital, df.index) if not trades_df.empty else 0
         current_zscore = df['ZScore'].iloc[-1] if 'ZScore' in df.columns else None
+
+        last_idx = len(df) - 1
+        zscore_signal = abs(current_zscore) >= self.entry_threshold if current_zscore is not None else False
+        can_trade = 'YES' if zscore_signal and BacktestUtils.is_good_entry(df, last_idx) else 'NO'
 
         results = {
             'Ticker1': self.ticker1,
             'Ticker2': self.ticker2,
-            'Can Trade': 'YES' if abs(current_zscore) >= self.entry_threshold else 'NO',
+            'Can Trade': can_trade,
             'Total Trades': len(trades_df),
             'Winning Trades': trades_df['Win'].sum() if not trades_df.empty else 0,
-            'Average winner': (trades_df[trades_df['Win']]['PnL ($)'].mean() if not trades_df[trades_df['Win']].empty else 0),
-            'Max win': (trades_df[trades_df['Win']]['PnL ($)'].max() if not trades_df[trades_df['Win']].empty else 0),
+            'Average winner': (trades_df[trades_df['Win']]['PnL ($)'].mean() if not trades_df.empty and trades_df['Win'].any() else 0),
+            'Max win': (trades_df[trades_df['Win']]['PnL ($)'].max() if not trades_df.empty and trades_df['Win'].any() else 0),
             'Losing Trades': (len(trades_df) - trades_df['Win'].sum()) if not trades_df.empty else 0,
-            'Average loser': (trades_df[~trades_df['Win']]['PnL ($)'].mean() if not trades_df[~trades_df['Win']].empty else 0),
-            'Max loser': (trades_df[~trades_df['Win']]['PnL ($)'].min() if not trades_df[~trades_df['Win']].empty else 0),
+            'Average loser': (trades_df[~trades_df['Win']]['PnL ($)'].mean() if not trades_df.empty and (~trades_df['Win']).any() else 0),
+            'Max loser': (trades_df[~trades_df['Win']]['PnL ($)'].min() if not trades_df.empty and (~trades_df['Win']).any() else 0),
             'Average trade duration (days)': (trades_df['Days held'].mean() if not trades_df.empty else 0),
             'Win Rate (%)': (trades_df['Win'].sum() / len(trades_df) * 100) if len(trades_df) > 0 else 0,
             'Profit factor': BacktestUtils.calculate_profit_factor(trades_df) if not trades_df.empty else 0,
@@ -271,10 +294,10 @@ class SinglePairBacktest:
             'Max Drawdown (%)': max_drawdown_pct,
             'Hedge Ratio': df['Hedge_Ratio'].iloc[-1] if 'Hedge_Ratio' in df.columns else None,
             'Final Z-Score': current_zscore,
-            'Sharpe ratio': BacktestUtils.calculate_sharpe_ratio(trades_df['PnL ($)']) if not trades_df.empty else 0,
-            'Sortino ratio': BacktestUtils.calculate_sortino_ratio(trades_df['PnL ($)']) if not trades_df.empty else 0,
+            'Sharpe ratio': BacktestUtils.calculate_sharpe_ratio(daily_returns) if not trades_df.empty else 0,
+            'Sortino ratio': BacktestUtils.calculate_sortino_ratio(daily_returns) if not trades_df.empty else 0,
             'Calmar ratio': BacktestUtils.calculate_calmar_ratio(annualized_return, max_drawdown_pct) if not trades_df.empty else 0,
-            'Volatility': BacktestUtils.calculate_volatility(trades_df['PnL ($)'], annualized=True) if not trades_df.empty else 0,
+            'Volatility': BacktestUtils.calculate_volatility(daily_returns, annualized=True) if not trades_df.empty else 0,
         }
         return results
 
